@@ -24,6 +24,8 @@ then
 fi
 
 echo -n "Copying files into wolfssl ... "
+cp sm2.h $WOLFSSL_DIR/wolfssl/wolfcrypt/
+cp sm2.c $WOLFSSL_DIR/wolfcrypt/src/
 cp sm3.h $WOLFSSL_DIR/wolfssl/wolfcrypt/
 cp sm3.c $WOLFSSL_DIR/wolfcrypt/src/
 cp sm3_asm.S $WOLFSSL_DIR/wolfcrypt/src/

@@ -73,6 +73,7 @@ typedef struct wc_Sm3   wc_Sm3;
 
 WOLFSSL_API int wc_InitSm3(wc_Sm3* sm3, void* heap, int devId);
 WOLFSSL_API int wc_Sm3Update(wc_Sm3* sm3, const byte* data, word32 len);
+WOLFSSL_API int wc_Sm3FinalRaw(wc_Sm3* sm3, byte* hash);
 WOLFSSL_API int wc_Sm3Final(wc_Sm3* sm3, byte* hash);
 WOLFSSL_API void wc_Sm3Free(wc_Sm3* sm3);
 WOLFSSL_API int wc_Sm3GetHash(wc_Sm3* sm3, byte* hash);

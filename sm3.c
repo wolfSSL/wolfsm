@@ -114,7 +114,7 @@ extern void sm3_compress_len_avx1(wc_Sm3* sm3, const byte* data, word32 len);
  */
 static void sm3_set_compress_x64(void)
 {
-    /* Boolean indicating choise of compression functions made. */
+    /* Boolean indicating choice of compression functions made. */
     static int compress_funcs_set = 0;
     /* Intel CPU Id flags. */
     static int intel_cpuid_flags;
@@ -778,9 +778,37 @@ static WC_INLINE void sm3_last_block(wc_Sm3* sm3)
     sm3_final(sm3);
 }
 
+/* Get raw hash.
+ *
+ * @param [in, out] sm3   SM3 hash object.
+ * @param [out]     hash  Final hash value.
+ * @return  0 on success.
+ * @return  BAD_FUNC_ARG when sm3 or hash is NULL.
+ */
+int wc_Sm3FinalRaw(wc_Sm3* sm3, byte* hash)
+{
+    int ret = 0;
+
+    /* Validate parameters. */
+    if ((sm3 == NULL) || (hash == NULL)) {
+        ret = BAD_FUNC_ARG;
+    }
+
+    if (ret == 0) {
+    #ifdef LITTLE_ENDIAN_ORDER
+        /* Convert little-endian 32-bit words to big-endian bytes. */
+        BSWAP32_8(hash, sm3->v);
+    #else
+        XMEMCPY(hash, sm3->v, WC_SM3_DIGEST_SIZE);
+    #endif
+    }
+
+    return ret;
+}
+
 /* Finalize hash.
  *
- * Initialize the state once final hash produced.
+ * Initializes the state once final hash produced.
  *
  * @param [in, out] sm3   SM3 hash object.
  * @param [out]     hash  Final hash value.
