@@ -49,7 +49,8 @@ typedef struct wc_Sm4 {
     /* Key schedule. */
     ALIGN16 word32 ks[SM4_KEY_SCHEDULE];
 #if defined(WOLFSSL_SM4_CBC) || defined(WOLFSSL_SM4_CTR) || \
-    defined(WOLFSSL_SM4_GCM)
+    defined(WOLFSSL_SM4_GCM) || \
+    (defined(OPENSSL_EXTRA) && defined(WOLFSSL_SM4_CCM))
     /* Cached IV. */
     ALIGN16 byte iv[SM4_IV_SIZE];
 #endif
@@ -67,16 +68,20 @@ typedef struct wc_Sm4 {
     /* GCM data. */
     Gcm gcm;
 #endif
-#ifdef WOLF_CRYPTO_CB
-    int    devId;
-    void*  devCtx;
+#if (defined(WOLFSSL_SM4_GCM) || defined(WOLFSSL_SM4_CCM)) && \
+    defined(OPENSSL_EXTRA)
+    int nonceSz;
 #endif
-    void*  heap; /* memory hint to use */
+#ifdef WOLF_CRYPTO_CB
+    int devId;
+    void* devCtx;
+#endif
+    void* heap; /* memory hint to use */
 
-    byte   keySet:1;
+    byte keySet:1;
 #if defined(WOLFSSL_SM4_CBC) || defined(WOLFSSL_SM4_CTR) || \
     defined(WOLFSSL_SM4_GCM)
-    byte   ivSet:1;
+    byte ivSet:1;
 #endif
 } wc_Sm4;
 
@@ -104,8 +109,7 @@ WOLFSSL_API int wc_Sm4CtrEncrypt(wc_Sm4* sm4, byte* out, const byte* in,
 WOLFSSL_API int wc_Sm4GcmSetKey(wc_Sm4* sm4, const byte* key, word32 len);
 WOLFSSL_API int wc_Sm4GcmEncrypt(wc_Sm4* sm4, byte* out, const byte* in,
     word32 sz, const byte* nonce, word32 nonceSz, byte* tag, word32 tagSz,
-    const byte* aad,
-    word32 aadSz);
+    const byte* aad, word32 aadSz);
 WOLFSSL_API int wc_Sm4GcmDecrypt(wc_Sm4* sm4, byte* out, const byte* in,
     word32 sz, const byte* nonce, word32 nonceSz, const byte* tag, word32 tagSz,
     const byte* aad, word32 aadSz);
