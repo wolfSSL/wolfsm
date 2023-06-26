@@ -542,12 +542,12 @@ int wc_ecc_sm2_sign_hash_ex(const byte* hash, word32 hashSz, WC_RNG* rng,
                 err = wc_ecc_sm2_make_key(rng, pub, WC_ECC_FLAG_NONE);
                 if (err == MP_OKAY) {
                     /* Copy the private key into temporary. */
-                    err = mp_copy(&key->k, x);
+                    err = mp_copy(wc_ecc_key_get_priv(key), x);
                 }
                 if (err == MP_OKAY) {
                     /* Calculate R and S. */
-                    err = _ecc_sm2_calc_r_s(x, pub->pubkey.x, &pub->k, e, order,
-                        b, r, s);
+                    err = _ecc_sm2_calc_r_s(x, pub->pubkey.x,
+                        wc_ecc_key_get_priv(pub), e, order, b, r, s);
                 }
                 /* Done if it worked. */
                 if (err == MP_OKAY) {
