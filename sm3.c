@@ -366,10 +366,13 @@ static void sm3_set_compress_x64(void)
 /* Constants for each iteration. */
 static const FLASH_QUALIFIER word32 SM3_T[64] = {
     T_00_00( 0), T_01_15( 1), T_01_15( 2), T_01_15( 3),
+#if !defined(__aarch64__) || !defined(WOLFSSL_ARMASM_CRYPTO_SM3)
     T_01_15( 4), T_01_15( 5), T_01_15( 6), T_01_15( 7),
     T_01_15( 8), T_01_15( 9), T_01_15(10), T_01_15(11),
     T_01_15(12), T_01_15(13), T_01_15(14), T_01_15(15),
+#endif
     T_16_63(16), T_16_63(17), T_16_63(18), T_16_63(19),
+#if !defined(__aarch64__) || !defined(WOLFSSL_ARMASM_CRYPTO_SM3)
     T_16_63(20), T_16_63(21), T_16_63(22), T_16_63(23),
     T_16_63(24), T_16_63(25), T_16_63(26), T_16_63(27),
     T_16_63(28), T_16_63(29), T_16_63(30), T_16_63(31),
@@ -381,15 +384,19 @@ static const FLASH_QUALIFIER word32 SM3_T[64] = {
     T_16_63(20), T_16_63(21), T_16_63(22), T_16_63(23),
     T_16_63(24), T_16_63(25), T_16_63(26), T_16_63(27),
     T_16_63(28), T_16_63(29), T_16_63(30), T_16_63(31),
+#endif
 };
 #else
 /* Constants for each iteration. */
 static const FLASH_QUALIFIER word32 SM3_T[64] = {
     0x79cc4519, 0xf3988a32, 0xe7311465, 0xce6228cb,
+#if !defined(__aarch64__) || !defined(WOLFSSL_ARMASM_CRYPTO_SM3)
     0x9cc45197, 0x3988a32f, 0x7311465e, 0xe6228cbc,
     0xcc451979, 0x988a32f3, 0x311465e7, 0x6228cbce,
     0xc451979c, 0x88a32f39, 0x11465e73, 0x228cbce6,
+#endif
     0x9d8a7a87, 0x3b14f50f, 0x7629ea1e, 0xec53d43c,
+#if !defined(__aarch64__) || !defined(WOLFSSL_ARMASM_CRYPTO_SM3)
     0xd8a7a879, 0xb14f50f3, 0x629ea1e7, 0xc53d43ce,
     0x8a7a879d, 0x14f50f3b, 0x29ea1e76, 0x53d43cec,
     0xa7a879d8, 0x4f50f3b1, 0x9ea1e762, 0x3d43cec5,
@@ -401,6 +408,7 @@ static const FLASH_QUALIFIER word32 SM3_T[64] = {
     0xd8a7a879, 0xb14f50f3, 0x629ea1e7, 0xc53d43ce,
     0x8a7a879d, 0x14f50f3b, 0x29ea1e76, 0x53d43cec,
     0xa7a879d8, 0x4f50f3b1, 0x9ea1e762, 0x3d43cec5
+#endif
 };
 #endif
 
@@ -528,18 +536,20 @@ static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
 
 #else
 
-#ifndef WOLFSSL_SMALL_STACK
-    word32 w[68];
-#else
-    word32* w = sm3->w;
-#endif
+    word32 w[WC_SM3_BLOCK_SIZE / 4];
     word32 v[8];
-    word32* wt = w;
+    word32* wt;
     word32* vt = v;
-    const word32* tt = SM3_T;
 
-    /* Copy in first 16 32-bit words. */
-    XMEMCPY(w, block, WC_SM3_BLOCK_SIZE);
+    /* Use passed in buffer if aligned. */
+    if (((size_t)block & 0x3) == 0) {
+        wt = (word32*)block;
+    }
+    /* Copy into aligned buffer. */
+    else {
+        XMEMCPY(w, block, WC_SM3_BLOCK_SIZE);
+        wt = w;
+    }
 
     /* Copy values into temporary. */
     v[0] = sm3->v[3];
@@ -555,6 +565,7 @@ static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
     __asm__ volatile (
         "LD1	{v8.16b-v11.16b}, [%[w]], #64\n\t"
         "LD1	{v0.16b, v1.16b}, [%[v]]\n\t"
+        "LD1	{v3.16b}, [%[t]]\n\t"
 
         /* Compression function. */
         "MOV	v12.16b, v8.16b\n\t"
@@ -563,9 +574,8 @@ static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
         "MOV	v15.16b, v11.16b\n\t"
         "MOV	x4, #3\n\t"
     "2:\n\t"
-        "LD1	{v3.16b}, [%[t]], #16\n\t"
         "EOR	v6.16b, v13.16b, v12.16b\n\t"
-        
+
         "EXT	v7.16b, v7.16b, v3.16b, #4\n\t"
         /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
         "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
@@ -599,8 +609,11 @@ static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
 
         "SUBS	x4, x4, #1\n\t"
         "MOV	v12.16B, v13.16B\n\t"
+        "SHL	v4.4S, v3.4S, #4\n\t"
         "MOV	v13.16B, v14.16B\n\t"
+        "SRI	v4.4S, v3.4S, #28\n\t"
         "MOV	v14.16B, v15.16B\n\t"
+        "MOV	v3.16B, v4.16B\n\t"
         "BNE	2b\n\t"
 
         /* W[-13] */
@@ -615,9 +628,8 @@ static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
         "SM3PARTW2	v8.4S, v6.4S, v4.4S\n\t"
 
         /* Compression function. */
-        "LD1	{v3.16b}, [%[t]], #16\n\t"
         "EOR	v6.16b, v8.16b, v11.16b\n\t"
-        
+
         "EXT	v7.16b, v7.16b, v3.16b, #4\n\t"
         /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
         "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
@@ -650,6 +662,7 @@ static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
         "SM3TT2A	v1.4S, v2.4S, v11.S[3]\n\t"
 
         "MOV	x4, #3\n\t"
+        "LD1	{v3.16b}, [%[t2]]\n\t"
     "1:\n\t"
         /* W[-13] */
         "EXT	v4.16b, v9.16b, v10.16b, #12\n\t"
@@ -702,11 +715,9 @@ static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
         "MOV	v15.16B, v11.16B\n\t"
         "MOV	v4.16B, v8.16B\n\t"
     "3:\n\t"
-        "LD1	{v3.16b}, [%[t]], #16\n\t"
         "EOR	v6.16b, v13.16b, v12.16b\n\t"
 
         "EXT	v7.16b, v7.16b, v3.16b, #4\n\t"
-        "EXT	v3.16b, v3.16b, v7.16b, #4\n\t"
         /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
         "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
         /* Vm=v6[0], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
@@ -714,8 +725,7 @@ static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
         /* Vm=v12[0], Vn=ss1, Vd=[v[7],v[6],v[5],v[4]] */
         "SM3TT2B	v1.4S, v2.4S, v12.S[0]\n\t"
 
-        "EXT	v7.16b, v7.16b, v3.16b, #4\n\t"
-        "EXT	v3.16b, v3.16b, v7.16b, #4\n\t"
+        "EXT	v7.16b, v7.16b, v3.16b, #8\n\t"
         /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
         "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
         /* Vm=v6[1], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
@@ -723,8 +733,7 @@ static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
         /* Vm=v12[1], Vn=ss1, Vd=[v[7],v[6],v[5],v[4]] */
         "SM3TT2B	v1.4S, v2.4S, v12.S[1]\n\t"
 
-        "EXT	v7.16b, v7.16b, v3.16b, #4\n\t"
-        "EXT	v3.16b, v3.16b, v7.16b, #4\n\t"
+        "EXT	v7.16b, v7.16b, v3.16b, #12\n\t"
         /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
         "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
         /* Vm=v6[2], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
@@ -732,10 +741,8 @@ static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
         /* Vm=v12[2], Vn=ss1, Vd=[v[7],v[6],v[5],v[4]] */
         "SM3TT2B	v1.4S, v2.4S, v12.S[2]\n\t"
 
-        "EXT	v7.16b, v7.16b, v3.16b, #4\n\t"
-        "EXT	v3.16b, v3.16b, v7.16b, #4\n\t"
         /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
-        "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
+        "SM3SS1	v2.4S, v0.4s, v1.4s, v3.4s\n\t"
         /* Vm=v6[3], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
         "SM3TT1B	v0.4S, v2.4S, v6.S[3]\n\t"
         /* Vm=v12[3], Vn=ss1, Vd=[v[7],v[6],v[5],v[4]] */
@@ -743,8 +750,11 @@ static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
 
         "SUBS	x5, x5, #1\n\t"
         "MOV	v12.16B, v13.16B\n\t"
+        "SHL	v7.4S, v3.4S, #4\n\t"
         "MOV	v13.16B, v14.16B\n\t"
+        "SRI	v7.4S, v3.4S, #28\n\t"
         "MOV	v14.16B, v15.16B\n\t"
+        "MOV	v3.16B, v7.16B\n\t"
         "MOV	v15.16B, v4.16B\n\t"
         "BNE	3b\n\t"
 
@@ -753,8 +763,8 @@ static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
 
         /* Store result of hash. */
         "ST1	{v0.16b, v1.16b}, [%[v]]\n\t"
-        : [w] "+r" (wt), [t] "+r" (tt)
-        : [v] "r" (vt)
+        :
+        : [w] "r" (wt), [v] "r" (vt), [t] "r" (SM3_T), [t2] "r" (SM3_T + 4)
         : "cc", "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7",
           "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15",
           "x4", "x5"
