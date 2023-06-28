@@ -119,6 +119,8 @@ static word32 sm4_fk[4] = {
 };
 
 
+#if !defined(__aarch64__) || !defined(WOLFSSL_ARMASM_CRYPTO_SM4)
+
 /* S-box used in nonlinear transformation tau. */
 static byte sm4_sbox[256] = {
     0xD6, 0x90, 0xE9, 0xFE, 0xCC, 0xE1, 0x3D, 0xB7,
@@ -382,6 +384,8 @@ static word32 sm4_t(word32 x)
 
 #endif
 
+#endif /* !__aarch64__ || !WOLFSSL_ARMASM_CRYPTO_SM4 */
+
 /* Key schedule calculation.
  *
  * @param [in]  key  Array of bytes representing key.
@@ -389,6 +393,7 @@ static word32 sm4_t(word32 x)
  */
 static void sm4_key_schedule(const byte* key, word32* ks)
 {
+#if !defined(__aarch64__) || !defined(WOLFSSL_ARMASM_CRYPTO_SM4)
 #ifndef WOLFSSL_SMALL_STACK
     word32 k[36];
     word32 t;
@@ -457,6 +462,40 @@ static void sm4_key_schedule(const byte* key, word32* ks)
         ks[i] = ks[i - 4] ^ (t ^ rotlFixed(t, 13) ^ rotlFixed(t, 23));
     }
 #endif
+#else
+    word32* ck = sm4_ck;
+
+    __asm__ volatile (
+        "LD1	{v0.16b}, [%[key]]\n\t"
+        "LD1	{v9.16b}, [%[fk]]\n\t"
+        "REV32	v0.16B, v0.16B\n\t"
+        "LD1	{v1.4S-v4.4S}, [%[ck]], #64\n\t"
+        "EOR	v0.16B, v0.16B, v9.16B\n\t"
+        "LD1	{v5.4S-v8.4S}, [%[ck]]\n\t"
+
+        "SM4EKEY	v1.4S, v0.4S, v1.4S\n\t"
+        "SM4EKEY	v2.4S, v1.4S, v2.4S\n\t"
+        "SM4EKEY	v3.4S, v2.4S, v3.4S\n\t"
+        "SM4EKEY	v4.4S, v3.4S, v4.4S\n\t"
+        "SM4EKEY	v5.4S, v4.4S, v5.4S\n\t"
+        "SM4EKEY	v6.4S, v5.4S, v6.4S\n\t"
+        "SM4EKEY	v7.4S, v6.4S, v7.4S\n\t"
+        "SM4EKEY	v8.4S, v7.4S, v8.4S\n\t"
+
+        "ST4	{v1.S-v4.S}[0], [%[ks]], #16\n\t"
+        "ST4	{v5.S-v8.S}[0], [%[ks]], #16\n\t"
+        "ST4	{v1.S-v4.S}[1], [%[ks]], #16\n\t"
+        "ST4	{v5.S-v8.S}[1], [%[ks]], #16\n\t"
+        "ST4	{v1.S-v4.S}[2], [%[ks]], #16\n\t"
+        "ST4	{v5.S-v8.S}[2], [%[ks]], #16\n\t"
+        "ST4	{v1.S-v4.S}[3], [%[ks]], #16\n\t"
+        "ST4	{v5.S-v8.S}[3], [%[ks]], #16\n\t"
+        : [ks] "+r" (ks), [ck] "+r" (ck)
+        : [key] "r" (key), [fk] "r" (sm4_fk)
+        : "cc", "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8",
+          "v9"
+    );
+#endif
 }
 
 /* Round operation.
@@ -483,8 +522,8 @@ static void sm4_key_schedule(const byte* key, word32* ks)
  */
 static void sm4_encrypt(const word32* ks, const byte* in, byte* out)
 {
+#if !defined(__aarch64__) || !defined(WOLFSSL_ARMASM_CRYPTO_SM4)
     word32 x0, x1, x2, x3;
-
     /* Load block. */
     LOAD_U32_BE(in, x0, x1, x2, x3);
 
@@ -500,6 +539,37 @@ static void sm4_encrypt(const word32* ks, const byte* in, byte* out)
 
     /* Store encrypted block. */
     STORE_U32_BE(x0, x1, x2, x3, out);
+#else
+    __asm__ volatile (
+        "LD1	{v0.16b}, [%[in]]\n\t"
+        "LD4	{v1.S-v4.S}[0], [%[ks]], #16\n\t"
+        "LD4	{v5.S-v8.S}[0], [%[ks]], #16\n\t"
+        "LD4	{v1.S-v4.S}[1], [%[ks]], #16\n\t"
+        "LD4	{v5.S-v8.S}[1], [%[ks]], #16\n\t"
+        "REV32	v0.16B, v0.16B\n\t"
+        "LD4	{v1.S-v4.S}[2], [%[ks]], #16\n\t"
+        "LD4	{v5.S-v8.S}[2], [%[ks]], #16\n\t"
+        "LD4	{v1.S-v4.S}[3], [%[ks]], #16\n\t"
+        "LD4	{v5.S-v8.S}[3], [%[ks]], #16\n\t"
+
+        "SM4E	v0.4S, v1.4S\n\t"
+        "SM4E	v0.4S, v2.4S\n\t"
+        "SM4E	v0.4S, v3.4S\n\t"
+        "SM4E	v0.4S, v4.4S\n\t"
+        "SM4E	v0.4S, v5.4S\n\t"
+        "SM4E	v0.4S, v6.4S\n\t"
+        "SM4E	v0.4S, v7.4S\n\t"
+        "SM4E	v0.4S, v8.4S\n\t"
+
+        "REV64	v0.16B, v0.16B\n\t"
+        "EXT	v0.16B, v0.16B, v0.16B, #8\n\t"
+        "ST1	{v0.16b}, [%[out]]\n\t"
+
+        : [ks] "+r" (ks), [out] "+r" (out)
+        : [in] "r" (in)
+        : "cc", "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"
+    );
+#endif
 }
 
 #if defined(WOLFSSL_SM4_ECB) || defined(WOLFSSL_SM4_CBC)
@@ -511,6 +581,7 @@ static void sm4_encrypt(const word32* ks, const byte* in, byte* out)
  */
 static void sm4_decrypt(const word32* ks, const byte* in, byte* out)
 {
+#if !defined(__aarch64__) || !defined(WOLFSSL_ARMASM_CRYPTO_SM4)
     word32 x0, x1, x2, x3;
 
     /* Load block. */
@@ -528,6 +599,37 @@ static void sm4_decrypt(const word32* ks, const byte* in, byte* out)
 
     /* Store decrypted block. */
     STORE_U32_BE(x0, x1, x2, x3, out);
+#else
+    __asm__ volatile (
+        "LD1	{v0.16b}, [%[in]]\n\t"
+        "LD4	{v1.S-v4.S}[3], [%[ks]], #16\n\t"
+        "LD4	{v5.S-v8.S}[3], [%[ks]], #16\n\t"
+        "LD4	{v1.S-v4.S}[2], [%[ks]], #16\n\t"
+        "LD4	{v5.S-v8.S}[2], [%[ks]], #16\n\t"
+        "REV32	v0.16B, v0.16B\n\t"
+        "LD4	{v1.S-v4.S}[1], [%[ks]], #16\n\t"
+        "LD4	{v5.S-v8.S}[1], [%[ks]], #16\n\t"
+        "LD4	{v1.S-v4.S}[0], [%[ks]], #16\n\t"
+        "LD4	{v5.S-v8.S}[0], [%[ks]], #16\n\t"
+
+        "SM4E	v0.4S, v8.4S\n\t"
+        "SM4E	v0.4S, v7.4S\n\t"
+        "SM4E	v0.4S, v6.4S\n\t"
+        "SM4E	v0.4S, v5.4S\n\t"
+        "SM4E	v0.4S, v4.4S\n\t"
+        "SM4E	v0.4S, v3.4S\n\t"
+        "SM4E	v0.4S, v2.4S\n\t"
+        "SM4E	v0.4S, v1.4S\n\t"
+
+        "REV64	v0.16B, v0.16B\n\t"
+        "EXT	v0.16B, v0.16B, v0.16B, #8\n\t"
+        "ST1	{v0.16b}, [%[out]]\n\t"
+
+        : [ks] "+r" (ks)
+        : [in] "r" (in), [out] "r" (out)
+        : "cc", "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"
+    );
+#endif
 }
 #endif
 
@@ -1006,6 +1108,37 @@ int wc_Sm4CtrEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz)
 #endif /* WOLFSSL_SM4_CTR */
 
 #ifdef WOLFSSL_SM4_GCM
+/* Calculate the value of H for the GMAC operation.
+ *
+ * @param [in]  sm4  SM4 algorithm object.
+ * @param [in]  iv   Initial IV.
+ */
+static void sm4_gcm_calc_h(wc_Sm4* sm4, byte* iv)
+{
+#if defined(__aarch64__) && defined(WOLFSSL_ARMASM)
+    word32* pt = (word32*)sm4->gcm.H;
+#endif
+
+    /* Encrypt all zeros IV to create hash key for GCM. */
+    sm4_encrypt(sm4->ks, iv, sm4->gcm.H);
+#if !defined(__aarch64__) || !defined(WOLFSSL_ARMASM)
+    #if defined(GCM_TABLE) || defined(GCM_TABLE_4BIT)
+        /* Generate table from hash key. */
+        GenerateM0(&sm4->gcm);
+    #endif /* GCM_TABLE */
+#else
+    /* Reverse the bits of H for use in assembly. */
+    __asm__ volatile (
+        "LD1 {v0.16b}, [%[h]] \n"
+        "RBIT v0.16b, v0.16b \n"
+        "ST1 {v0.16b}, [%[out]] \n"
+        : [out] "=r" (pt)
+        : [h] "0" (pt)
+        : "cc", "memory", "v0"
+    );
+#endif
+}
+
 /* Increment counter for GCM.
  *
  * @param [in, out] counter  4-byte big endian number.
@@ -1058,6 +1191,9 @@ static void sm4_gcm_encrypt_c(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
     else {
         /* Counter is GHASH of nonce. */
         GHASH(&sm4->gcm, NULL, 0, nonce, nonceSz, counter, SM4_BLOCK_SIZE);
+#ifdef WOLFSSL_ARMASM
+        GMULT(counter, sm4->gcm.H);
+#endif
     }
     /* Encrypt the initial counter for GMAC. */
     sm4_encrypt(sm4->ks, counter, encCounter);
@@ -1113,7 +1249,13 @@ static void sm4_gcm_encrypt_c(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
     }
 
     /* Calculate GHASH on additional authentication data and cipher text. */
+#ifndef WOLFSSL_ARMASM
     GHASH(&sm4->gcm, aad, aadSz, out, sz, tag, tagSz);
+#else
+    GHASH(&sm4->gcm, aad, aadSz, out, sz, counter, SM4_BLOCK_SIZE);
+    GMULT(counter, sm4->gcm.H);
+    XMEMCPY(tag, counter, tagSz);
+#endif
     /* XOR the encrypted initial counter into tag. */
     xorbuf(tag, encCounter, tagSz);
 }
@@ -1157,10 +1299,18 @@ static int sm4_gcm_decrypt_c(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
     else {
         /* Counter is GHASH of nonce. */
         GHASH(&sm4->gcm, NULL, 0, nonce, nonceSz, counter, SM4_BLOCK_SIZE);
+#ifdef WOLFSSL_ARMASM
+        GMULT(counter, sm4->gcm.H);
+#endif
     }
 
     /* Calculate GHASH on additional authentication data and cipher text. */
+#ifndef WOLFSSL_ARMASM
     GHASH(&sm4->gcm, aad, aadSz, in, sz, calcTag, sizeof(calcTag));
+#else
+    GHASH(&sm4->gcm, aad, aadSz, in, sz, calcTag, SM4_BLOCK_SIZE);
+    GMULT(calcTag, sm4->gcm.H);
+#endif
     /* Encrypt the initial counter. */
     sm4_encrypt(sm4->ks, counter, scratch);
     /* XOR the encrypted initial counter into calculated tag. */
@@ -1263,12 +1413,8 @@ int wc_Sm4GcmSetKey(wc_Sm4* sm4, const byte* key, word32 len)
         XMEMSET(iv, 0, sizeof(iv));
         /* Set IV. */
         sm4_set_iv(sm4, iv);
-        /* Encrypt all zeros IV to create hash key for GCM. */
-        sm4_encrypt(sm4->ks, iv, sm4->gcm.H);
-    #if defined(GCM_TABLE) || defined(GCM_TABLE_4BIT)
-        /* Generate table from hash key. */
-        GenerateM0(&sm4->gcm);
-    #endif /* GCM_TABLE */
+        /* Calculate H for GMAC operation */
+        sm4_gcm_calc_h(sm4, iv);
     }
 
     return ret;

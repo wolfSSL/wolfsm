@@ -414,6 +414,8 @@ static const FLASH_QUALIFIER word32 SM3_T[64] = {
  */
 static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
 {
+#if !defined(__aarch64__) || !defined(WOLFSSL_ARMASM_CRYPTO_SM3)
+
 #ifdef WOLFSSL_SM3_SMALL
 #ifndef WOLFSSL_SMALL_STACK
     word32 w[68];
@@ -522,6 +524,252 @@ static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
     sm3->v[5] ^= v[5];
     sm3->v[6] ^= v[6];
     sm3->v[7] ^= v[7];
+#endif
+
+#else
+
+#ifndef WOLFSSL_SMALL_STACK
+    word32 w[68];
+#else
+    word32* w = sm3->w;
+#endif
+    word32 v[8];
+    word32* wt = w;
+    word32* vt = v;
+    const word32* tt = SM3_T;
+
+    /* Copy in first 16 32-bit words. */
+    XMEMCPY(w, block, WC_SM3_BLOCK_SIZE);
+
+    /* Copy values into temporary. */
+    v[0] = sm3->v[3];
+    v[1] = sm3->v[2];
+    v[2] = sm3->v[1];
+    v[3] = sm3->v[0];
+    v[4] = sm3->v[7];
+    v[5] = sm3->v[6];
+    v[6] = sm3->v[5];
+    v[7] = sm3->v[4];
+
+    /* Do 64 iterations of the compression process. */
+    __asm__ volatile (
+        "LD1	{v8.16b-v11.16b}, [%[w]], #64\n\t"
+        "LD1	{v0.16b, v1.16b}, [%[v]]\n\t"
+
+        /* Compression function. */
+        "MOV	v12.16b, v8.16b\n\t"
+        "MOV	v13.16b, v9.16b\n\t"
+        "MOV	v14.16b, v10.16b\n\t"
+        "MOV	v15.16b, v11.16b\n\t"
+        "MOV	x4, #3\n\t"
+    "2:\n\t"
+        "LD1	{v3.16b}, [%[t]], #16\n\t"
+        "EOR	v6.16b, v13.16b, v12.16b\n\t"
+        
+        "EXT	v7.16b, v7.16b, v3.16b, #4\n\t"
+        /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
+        "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
+        /* Vm=v6[0], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
+        "SM3TT1A	v0.4S, v2.4S, v6.S[0]\n\t"
+        /* Vm=v4[0], Vn=ss1, Vd=[v[7],v[6],v[5],v[4]] */
+        "SM3TT2A	v1.4S, v2.4S, v12.S[0]\n\t"
+
+        "EXT	v7.16b, v7.16b, v3.16b, #8\n\t"
+        /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
+        "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
+        /* Vm=v6[1], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
+        "SM3TT1A	v0.4S, v2.4S, v6.S[1]\n\t"
+        /* Vm=v4[1], Vn=ss1, Vd=[v[7],v[6],v[5],v[4]] */
+        "SM3TT2A	v1.4S, v2.4S, v12.S[1]\n\t"
+
+        "EXT	v7.16b, v7.16b, v3.16b, #12\n\t"
+        /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
+        "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
+        /* Vm=v6[2], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
+        "SM3TT1A	v0.4S, v2.4S, v6.S[2]\n\t"
+        /* Vm=v4[2], Vn=ss1, Vd=[v[7],v[6],v[5],v[4]] */
+        "SM3TT2A	v1.4S, v2.4S, v12.S[2]\n\t"
+
+        /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
+        "SM3SS1	v2.4S, v0.4s, v1.4s, v3.4s\n\t"
+        /* Vm=v6[3], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
+        "SM3TT1A	v0.4S, v2.4S, v6.S[3]\n\t"
+        /* Vm=v4[3], Vn=ss1, V d=[v[7],v[6],v[5],v[4]] */
+        "SM3TT2A	v1.4S, v2.4S, v12.S[3]\n\t"
+
+        "SUBS	x4, x4, #1\n\t"
+        "MOV	v12.16B, v13.16B\n\t"
+        "MOV	v13.16B, v14.16B\n\t"
+        "MOV	v14.16B, v15.16B\n\t"
+        "BNE	2b\n\t"
+
+        /* W[-13] */
+        "EXT	v4.16b, v8.16b, v9.16b, #12\n\t"
+        /* W[-9] */
+        "EXT	v5.16b, v9.16b, v10.16b, #12\n\t"
+        /* W[-6] */
+        "EXT	v6.16b, v10.16b, v11.16b, #8\n\t"
+        /* Vd=W-16=v8, Vn=W-9=v5, Vm=W-4=v11 */
+        "SM3PARTW1	v8.4S, v5.4S, v11.4S\n\t"
+        /* Vd=v8, Vn=W-6=v6, Vm=W-13=v4 */
+        "SM3PARTW2	v8.4S, v6.4S, v4.4S\n\t"
+
+        /* Compression function. */
+        "LD1	{v3.16b}, [%[t]], #16\n\t"
+        "EOR	v6.16b, v8.16b, v11.16b\n\t"
+        
+        "EXT	v7.16b, v7.16b, v3.16b, #4\n\t"
+        /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
+        "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
+        /* Vm=v6[0], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
+        "SM3TT1A	v0.4S, v2.4S, v6.S[0]\n\t"
+        /* Vm=v11[0], Vn=ss1, Vd=[v[7],v[6],v[5],v[4]] */
+        "SM3TT2A	v1.4S, v2.4S, v11.S[0]\n\t"
+
+        "EXT	v7.16b, v7.16b, v3.16b, #8\n\t"
+        /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
+        "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
+        /* Vm=v6[1], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
+        "SM3TT1A	v0.4S, v2.4S, v6.S[1]\n\t"
+        /* Vm=v11[1], Vn=ss1, Vd=[v[7],v[6],v[5],v[4]] */
+        "SM3TT2A	v1.4S, v2.4S, v11.S[1]\n\t"
+
+        "EXT	v7.16b, v7.16b, v3.16b, #12\n\t"
+        /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
+        "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
+        /* Vm=v6[2], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
+        "SM3TT1A	v0.4S, v2.4S, v6.S[2]\n\t"
+        /* Vm=v11[2], Vn=ss1, Vd=[v[7],v[6],v[5],v[4]] */
+        "SM3TT2A	v1.4S, v2.4S, v11.S[2]\n\t"
+
+        /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
+        "SM3SS1	v2.4S, v0.4s, v1.4s, v3.4s\n\t"
+        /* Vm=v6[3], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
+        "SM3TT1A	v0.4S, v2.4S, v6.S[3]\n\t"
+        /* Vm=v11[3], Vn=ss1, V d=[v[7],v[6],v[5],v[4]] */
+        "SM3TT2A	v1.4S, v2.4S, v11.S[3]\n\t"
+
+        "MOV	x4, #3\n\t"
+    "1:\n\t"
+        /* W[-13] */
+        "EXT	v4.16b, v9.16b, v10.16b, #12\n\t"
+        /* W[-9] */
+        "EXT	v5.16b, v10.16b, v11.16b, #12\n\t"
+        /* W[-6] */
+        "EXT	v6.16b, v11.16b, v8.16b, #8\n\t"
+        /* Vd=W-16=v9, Vn=W-9=v5, Vm=W-4=v8 */
+        "SM3PARTW1	v9.4S, v5.4S, v8.4S\n\t"
+        /* Vd=v9, Vn=W-6=v6, Vm=W-13=v4 */
+        "SM3PARTW2	v9.4S, v6.4S, v4.4S\n\t"
+
+        /* W[-13] */
+        "EXT	v4.16b, v10.16b, v11.16b, #12\n\t"
+        /* W[-9] */
+        "EXT	v5.16b, v11.16b, v8.16b, #12\n\t"
+        /* W[-6] */
+        "EXT	v6.16b, v8.16b, v9.16b, #8\n\t"
+        /* Vd=W-16=v10, Vn=W-9=v5, Vm=W-4=v9 */
+        "SM3PARTW1	v10.4S, v5.4S, v9.4S\n\t"
+        /* Vd=v10, Vn=W-6=v6, Vm=W-13=v4 */
+        "SM3PARTW2	v10.4S, v6.4S, v4.4S\n\t"
+
+        /* W[-13] */
+        "EXT	v4.16b, v11.16b, v8.16b, #12\n\t"
+        /* W[-9] */
+        "EXT	v5.16b, v8.16b, v9.16b, #12\n\t"
+        /* W[-6] */
+        "EXT	v6.16b, v9.16b, v10.16b, #8\n\t"
+        /* Vd=W-16=v11, Vn=W-9=v5, Vm=W-4=v10 */
+        "SM3PARTW1	v11.4S, v5.4S, v10.4S\n\t"
+        /* Vd=v11, Vn=W-6=v6, Vm=W-13=v4 */
+        "SM3PARTW2	v11.4S, v6.4S, v4.4S\n\t"
+
+        "MOV	v12.16B, v8.16B\n\t"
+        /* W[-13] */
+        "EXT	v4.16b, v8.16b, v9.16b, #12\n\t"
+        /* W[-9] */
+        "EXT	v5.16b, v9.16b, v10.16b, #12\n\t"
+        /* W[-6] */
+        "EXT	v6.16b, v10.16b, v11.16b, #8\n\t"
+        /* Vd=W-16=v8, Vn=W-9=v5, Vm=W-4=v11 */
+        "SM3PARTW1	v8.4S, v5.4S, v11.4S\n\t"
+        /* Vd=v8, Vn=W-6=v6, Vm=W-13=v4 */
+        "SM3PARTW2	v8.4S, v6.4S, v4.4S\n\t"
+
+        "MOV	x5, #4\n\t"
+        "MOV	v13.16B, v9.16B\n\t"
+        "MOV	v14.16B, v10.16B\n\t"
+        "MOV	v15.16B, v11.16B\n\t"
+        "MOV	v4.16B, v8.16B\n\t"
+    "3:\n\t"
+        "LD1	{v3.16b}, [%[t]], #16\n\t"
+        "EOR	v6.16b, v13.16b, v12.16b\n\t"
+
+        "EXT	v7.16b, v7.16b, v3.16b, #4\n\t"
+        "EXT	v3.16b, v3.16b, v7.16b, #4\n\t"
+        /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
+        "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
+        /* Vm=v6[0], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
+        "SM3TT1B	v0.4S, v2.4S, v6.S[0]\n\t"
+        /* Vm=v12[0], Vn=ss1, Vd=[v[7],v[6],v[5],v[4]] */
+        "SM3TT2B	v1.4S, v2.4S, v12.S[0]\n\t"
+
+        "EXT	v7.16b, v7.16b, v3.16b, #4\n\t"
+        "EXT	v3.16b, v3.16b, v7.16b, #4\n\t"
+        /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
+        "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
+        /* Vm=v6[1], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
+        "SM3TT1B	v0.4S, v2.4S, v6.S[1]\n\t"
+        /* Vm=v12[1], Vn=ss1, Vd=[v[7],v[6],v[5],v[4]] */
+        "SM3TT2B	v1.4S, v2.4S, v12.S[1]\n\t"
+
+        "EXT	v7.16b, v7.16b, v3.16b, #4\n\t"
+        "EXT	v3.16b, v3.16b, v7.16b, #4\n\t"
+        /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
+        "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
+        /* Vm=v6[2], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
+        "SM3TT1B	v0.4S, v2.4S, v6.S[2]\n\t"
+        /* Vm=v12[2], Vn=ss1, Vd=[v[7],v[6],v[5],v[4]] */
+        "SM3TT2B	v1.4S, v2.4S, v12.S[2]\n\t"
+
+        "EXT	v7.16b, v7.16b, v3.16b, #4\n\t"
+        "EXT	v3.16b, v3.16b, v7.16b, #4\n\t"
+        /* Vm[3]=v[4], Vn[3]=v[0], Vd=v2, Va[3]=SM3_T[j] */
+        "SM3SS1	v2.4S, v0.4s, v1.4s, v7.4s\n\t"
+        /* Vm=v6[3], Vn=ss1, Vd=[v[3],v[2],v[1],v[0]] */
+        "SM3TT1B	v0.4S, v2.4S, v6.S[3]\n\t"
+        /* Vm=v12[3], Vn=ss1, Vd=[v[7],v[6],v[5],v[4]] */
+        "SM3TT2B	v1.4S, v2.4S, v12.S[3]\n\t"
+
+        "SUBS	x5, x5, #1\n\t"
+        "MOV	v12.16B, v13.16B\n\t"
+        "MOV	v13.16B, v14.16B\n\t"
+        "MOV	v14.16B, v15.16B\n\t"
+        "MOV	v15.16B, v4.16B\n\t"
+        "BNE	3b\n\t"
+
+        "SUBS	x4, x4, #1\n\t"
+        "BNE	1b\n\t"
+
+        /* Store result of hash. */
+        "ST1	{v0.16b, v1.16b}, [%[v]]\n\t"
+        : [w] "+r" (wt), [t] "+r" (tt)
+        : [v] "r" (vt)
+        : "cc", "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7",
+          "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15",
+          "x4", "x5"
+    );
+
+    /* XOR result into current values. */
+    sm3->v[0] ^= v[3];
+    sm3->v[1] ^= v[2];
+    sm3->v[2] ^= v[1];
+    sm3->v[3] ^= v[0];
+    sm3->v[4] ^= v[7];
+    sm3->v[5] ^= v[6];
+    sm3->v[6] ^= v[5];
+    sm3->v[7] ^= v[4];
+
 #endif
 }
 
