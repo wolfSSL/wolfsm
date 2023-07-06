@@ -1,7 +1,7 @@
 
 # wolfSSL SM Algorithms
 
-This repository contains the impementations of the Chinese Nation Standard's
+This repository contains the implementations of the Chinese Nation Standard's
 cryptographic algorithms known as ShangMi (SM).
 
 Support includes:
@@ -18,6 +18,10 @@ Note that the test and build configuration code is already in wolfSSL.
 wolfSSL is needed to build and test the SM algorithm implemetnations.
 Checkout the wolfSSL repository from GitHub beside wolfsm:
 
+ <install-dir>/
+ ├── wolfsm/
+ └── wolfssl/
+
 ```
 cd .. # To directory containing wolfsm
 git clone https://github.com/wolfssl/wolfssl.git
@@ -31,6 +35,17 @@ To install the SM code into wolfSSL, use the install script:
 cd wolfsm
 ./install.sh
 ```
+
+The following files will be placed in wolfssl/wolfssl/wolfcrypt:
+* sm2.h
+* sm3.h
+* sm4.h
+
+The following files will be placed in wolfssl/wolfcrypt/src:
+* sm2.c
+* sm3.c
+* sm3_asm.S
+* sm4.c
 
 ## Build wolfSSL
 
@@ -55,6 +70,29 @@ make
 sudo make install
 ```
 
+## Testing
+
+To test that the SM ciphers are working use the following command:
+
+```
+make test
+```
+
+To benchmark the algorithms enabled:
+
+```
+./wolfcrypt/benchmark/benchmark
+```
+
+To benchmark specific algorithms, add to the command line the option/s matching
+the algorithm/s:
+* SM2: -sm2
+* SM3: -sm3
+* SM4: -sm4 or
+  * SM4-CBC: -sm4-cbc
+  * SM4-GCM: -sm4-gcm
+  * SM4-CCM: -sm4-ccm
+
 # Development
 
 ## Regenerating assembly code
@@ -63,7 +101,15 @@ sudo make install
 
 The scripts to generate the assembly code have a dependency on the scripts
 repository.
+
+Note: You will need ruby installed to run the scripts.
+
 Checkout the scripts repository from GitHub beside wolfsm:
+
+ <install-dir>/
+ ├── wolfsm/
+ ├── wolfssl/
+ └── scripts/
 
 ```
 cd .. # To directory containing wolfsm
