@@ -68,10 +68,10 @@ static int ecc_sm2_digest_hashin(wc_HashAlg* hash, enum wc_HashType hashType,
     word32 tmpSz;
 
     /* Number of bytes in binary as type word32. */
-    tmpSz = hexSz;
+    tmpSz = (word32)hexSz;
     if (err == 0) {
         /* Convert hexadecimal string to binary. */
-        err = Base16_Decode((const byte*)hexIn, hexSz, tmp, &tmpSz);
+        err = Base16_Decode((const byte*)hexIn, tmpSz, tmp, &tmpSz);
     }
     if (err == 0) {
         /* Update the hash with the binary data. */
@@ -115,8 +115,8 @@ static int _ecc_sm2_calc_za(const byte *id, word16 idSz,
     /* Get ID of A size in bits. */
     sz = idSz * WOLFSSL_BIT_SIZE;
     /* Set big-endian 16-bit word. */
-    entla[0] = sz >> WOLFSSL_BIT_SIZE;
-    entla[1] = sz & 0xFF;
+    entla[0] = (byte)(sz >> WOLFSSL_BIT_SIZE);
+    entla[1] = (byte)(sz & 0xFF);
 
 #ifdef DEBUG_ECC_SM2
     WOLFSSL_MSG("ENTLA");
@@ -124,7 +124,7 @@ static int _ecc_sm2_calc_za(const byte *id, word16 idSz,
 #endif
 
     /* Get ordinate size. */
-    xASz = yASz = wc_ecc_size(key);
+    xASz = yASz = (word32)wc_ecc_size(key);
 #ifdef WOLFSSL_SMALL_STACK
     /* Allocate memory for the x-ordinate. */
     xA = (byte*)XMALLOC(xASz  + 1, key->heap, DYNAMIC_TYPE_TMP_BUFFER);
@@ -233,11 +233,11 @@ static int _ecc_sm2_calc_msg_hash(const byte* za, int zaSz, const byte* msg,
     err = wc_HashInit_ex(hash, hashType, NULL, 0);
     if (err == 0) {
         /* Hash ZA. */
-        err = wc_HashUpdate(hash, hashType, za, zaSz);
+        err = wc_HashUpdate(hash, hashType, za, (word32)zaSz);
     }
     if (err == 0) {
         /* Hash the message. */
-        err = wc_HashUpdate(hash, hashType, msg, msgSz);
+        err = wc_HashUpdate(hash, hashType, msg, (word32)msgSz);
     }
     if (err == 0) {
         /* Output the hash. */

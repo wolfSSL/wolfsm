@@ -977,7 +977,7 @@ int wc_Sm3Update(wc_Sm3* sm3, const byte* data, word32 len)
     }
     if ((ret == 0) && (len >= WC_SM3_BLOCK_SIZE)) {
         /* Mask out bits that are not a multiple of 64. */
-        word32 l = len & (~(WC_SM3_BLOCK_SIZE - 1));
+        word32 l = len & (word32)(~(WC_SM3_BLOCK_SIZE - 1));
 
         /* Compress complete blocks of data. */
         SM3_COMPRESS_LEN(sm3, data, l);
@@ -1030,7 +1030,8 @@ static WC_INLINE void sm3_last_block(wc_Sm3* sm3)
 
 #ifdef LITTLE_ENDIAN_ORDER
     /* Reverse as many words as had data in them. (Reverse of 0 is 0). */
-    ByteReverseWords(sm3->buffer, sm3->buffer, (sm3->buffLen + 3) & (~3));
+    ByteReverseWords(sm3->buffer, sm3->buffer,
+        (sm3->buffLen + 3) & (word32)(~3));
 #endif
     /* Hash last block. */
     sm3_final(sm3);
