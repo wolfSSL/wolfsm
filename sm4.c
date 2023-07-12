@@ -1070,7 +1070,7 @@ int wc_Sm4CtrEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz)
             out += len;
             sz -= len;
             /* Some or all unused bytes used up. */
-            sm4->unused -= len;
+            sm4->unused -= (byte)len;
         }
 
         /* Do blocks at a time - only get here when there are no unused bytes.
@@ -1098,7 +1098,7 @@ int wc_Sm4CtrEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz)
             /* XOR the encrypted IV with remaining data into output. */
             xorbufout(out, in, sm4->tmp, sz);
             /* Record number of unused encrypted IV bytes. */
-            sm4->unused = SM4_BLOCK_SIZE - sz;
+            sm4->unused = (byte)(SM4_BLOCK_SIZE - sz);
         }
     }
 
@@ -1375,7 +1375,7 @@ static int sm4_gcm_decrypt_c(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
 
     #ifndef WC_SM4_GCM_DEC_AUTH_EARLY
         /* Compare tag and calculated tag in constant time. */
-        res = ConstantCompare(tag, calcTag, tagSz);
+        res = ConstantCompare(tag, calcTag, (int)tagSz);
         /* Create mask based on comparison result in constant time */
         res = 0 - (sword32)(((word32)(0 - res)) >> 31U);
         /* Mask error code to get return value. */
@@ -1467,7 +1467,7 @@ int wc_Sm4GcmEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
 
     if (ret == 0) {
     #ifdef OPENSSL_EXTRA
-        sm4->nonceSz = nonceSz;
+        sm4->nonceSz = (int)nonceSz;
     #endif
         /* Perform encryption using C implementation. */
         sm4_gcm_encrypt_c(sm4, out, in, sz, nonce, nonceSz, tag, tagSz, aad,
@@ -1526,7 +1526,7 @@ int wc_Sm4GcmDecrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
 
     if (ret == 0) {
     #ifdef OPENSSL_EXTRA
-        sm4->nonceSz = nonceSz;
+        sm4->nonceSz = (int)nonceSz;
     #endif
         /* Perform decryption using C implementation. */
         ret = sm4_gcm_decrypt_c(sm4, out, in, sz, nonce, nonceSz, tag, tagSz,
@@ -1597,10 +1597,10 @@ static void sm4_ccm_roll_aad(wc_Sm4* sm4, const byte* in, word32 sz, byte* out)
         aadLenSz = 6;
         out[0] ^= 0xFF;
         out[1] ^= 0xFE;
-        out[2] ^= ((sz & 0xFF000000) >> 24);
-        out[3] ^= ((sz & 0x00FF0000) >> 16);
-        out[4] ^= ((sz & 0x0000FF00) >>  8);
-        out[5] ^=  (sz & 0x000000FF);
+        out[2] ^= (byte)((sz & 0xFF000000) >> 24);
+        out[3] ^= (byte)((sz & 0x00FF0000) >> 16);
+        out[4] ^= (byte)((sz & 0x0000FF00) >>  8);
+        out[5] ^= (byte) (sz & 0x000000FF);
     }
 
     /* Calculate number of input bytes required to make up the block. */
@@ -1715,11 +1715,11 @@ static WC_INLINE void sm4_ccm_calc_auth_tag(wc_Sm4* sm4, const byte* plain,
     /* Nonce is in place. */
 
     /* Set first byte to length and flags. */
-    b[0] = (((aad != NULL) && (aadSz > 0)) ? 0x40 : 0x00) +
-           (8 * (((byte)tagSz - 2) / 2)) + (ctrSz - 1);
+    b[0] = (byte)((((aad != NULL) && (aadSz > 0)) ? 0x40 : 0x00) +
+                  (8 * (((byte)tagSz - 2) / 2)) + (ctrSz - 1));
     /* Set the counter bytes to length of data - 4 bytes of length only. */
     for (i = 0; i < ctrSz && i < sizeof(word32); i++) {
-        b[SM4_BLOCK_SIZE - 1 - i] = sz >> (8 * i);
+        b[SM4_BLOCK_SIZE - 1 - i] = (byte)(sz >> (8 * i));
     }
     /* Set remaining counter bytes to 0. */
     for (; i < ctrSz; i++) {
@@ -1835,7 +1835,7 @@ static int sm4_ccm_decrypt_c(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
     sm4_ccm_calc_auth_tag(sm4, out, sz, aad, aadSz, b, ctrSz, t, tagSz);
 
     /* Compare calculated tag with passed in tag. */
-    if (ConstantCompare(t, tag, tagSz) != 0) {
+    if (ConstantCompare(t, tag, (int)tagSz) != 0) {
         /* Set CCM authentication error return. */
         ret = SM4_CCM_AUTH_E;
     }
@@ -1893,7 +1893,7 @@ int wc_Sm4CcmEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
 
     if (ret == 0) {
     #ifdef OPENSSL_EXTRA
-        sm4->nonceSz = nonceSz;
+        sm4->nonceSz = (int)nonceSz;
     #endif
         /* Perform encryption using C implementation. */
         sm4_ccm_encrypt_c(sm4, out, in, sz, nonce, nonceSz, tag, tagSz, aad,
@@ -1955,7 +1955,7 @@ int wc_Sm4CcmDecrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
 
     if (ret == 0) {
     #ifdef OPENSSL_EXTRA
-        sm4->nonceSz = nonceSz;
+        sm4->nonceSz = (int)nonceSz;
     #endif
         /* Perform decryption using C implementation. */
         ret = sm4_ccm_decrypt_c(sm4, out, in, sz, nonce, nonceSz, tag, tagSz,
