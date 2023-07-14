@@ -475,6 +475,7 @@ int wc_ecc_sm2_sign_hash_ex(const byte* hash, word32 hashSz, WC_RNG* rng,
         err = BAD_FUNC_ARG;
     }
 
+#ifdef SM2_SP_IMPL_AVAILABLE
 #if defined(WOLFSSL_HAVE_SP_ECC) && !defined(WOLFSSL_SP_NO_256)
     if (err == MP_OKAY) {
         /* Use optimized code in SP to perform signing. */
@@ -483,6 +484,7 @@ int wc_ecc_sm2_sign_hash_ex(const byte* hash, word32 hashSz, WC_RNG* rng,
             key->heap);
         RESTORE_VECTOR_REGISTERS();
     }
+#endif
 #endif
 
 #ifndef WOLFSSL_SP_MATH
@@ -575,6 +577,8 @@ int wc_ecc_sm2_sign_hash_ex(const byte* hash, word32 hashSz, WC_RNG* rng,
     XFREE(data, key->heap, DYNAMIC_TYPE_ECC);
 #endif
 #else
+    (void)hashSz;
+
     err = NOT_COMPILED_IN;
 #endif
 
@@ -791,6 +795,7 @@ int wc_ecc_sm2_verify_hash_ex(mp_int *r, mp_int *s, const byte *hash,
         err = BAD_FUNC_ARG;
     }
 
+#ifdef SM2_SP_IMPL_AVAILABLE
 #if defined(WOLFSSL_HAVE_SP_ECC) && !defined(WOLFSSL_SP_NO_256)
     if (err == MP_OKAY) {
         /* Use optimized code in SP to perform verification. */
@@ -799,6 +804,7 @@ int wc_ecc_sm2_verify_hash_ex(mp_int *r, mp_int *s, const byte *hash,
             key->pubkey.y, key->pubkey.z, r, s, res, key->heap);
         RESTORE_VECTOR_REGISTERS();
     }
+#endif
 #endif
 
 #ifndef WOLFSSL_SP_MATH
@@ -949,6 +955,8 @@ int wc_ecc_sm2_verify_hash_ex(mp_int *r, mp_int *s, const byte *hash,
     XFREE(data, key->heap, DYNAMIC_TYPE_ECC);
 #endif
 #else
+    (void)hashSz;
+
     err = NOT_COMPILED_IN;
 #endif
 
