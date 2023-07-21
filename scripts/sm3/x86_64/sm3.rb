@@ -33,12 +33,14 @@ class SM3_ASM_X86_64
   end
 
   def write()
+    @avx1.ifdefa("WOLFSSL_SM3")
     @avx1.ifdefa("WOLFSSL_X86_64_BUILD")
     @avx1.ifdefa("HAVE_INTEL_AVX1")
     @avx1.write
     @avx1_rorx.write
     @avx1.endifa("HAVE_INTEL_AVX1")
     @avx1.endifa("WOLFSSL_X86_64_BUILD")
+    @avx1.endifa("WOLFSSL_SM3")
   end
 end
 
