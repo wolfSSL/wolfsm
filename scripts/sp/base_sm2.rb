@@ -1,4 +1,4 @@
-# sm3.rb
+# base_sm2.rb
 #
 # Copyright (C) 2006-2023 wolfSSL Inc.
 #
@@ -20,27 +20,22 @@
 #
 # Implementation by Sean Parkinson
 
-require_relative "../../../../scripts/asm/x86_64/x86_64.rb"
-require_relative "./sm3_avx1.rb"
-require_relative "./sm3_avx1_rorx.rb"
+module FileC_SM2
+  def write_addr()
+    if @addr_mask
+      puts <<EOF
+#if defined(WOLFSSL_SP_SMALL) && defined(WOLFSSL_SP_SM2)
+/* Mask for address to obfuscate which of the two address will be used. */
+static const size_t addr_mask[2] = { 0, (size_t)-1 };
+#endif
 
-class SM3_ASM_X86_64
-  include X86_64
+#if defined(WOLFSSL_SP_NONBLOCK) && (!defined(WOLFSSL_SP_NO_MALLOC) || \\
+                                     !defined(WOLFSSL_SP_SMALL))
+    #error SP non-blocking requires small and no-malloc (WOLFSSL_SP_SMALL and WOLFSSL_SP_NO_MALLOC)
+#endif
 
-  def initialize(att_asm, msvc_asm)
-    @avx1 = SM3_ASM_X86_64_AVX1.new(att_asm, msvc_asm)
-    @avx1_rorx = SM3_ASM_X86_64_AVX1_RORX.new(att_asm, msvc_asm)
-  end
-
-  def write()
-    @avx1.ifdefa("WOLFSSL_SM3")
-    @avx1.ifdefa("WOLFSSL_X86_64_BUILD")
-    @avx1.ifdefa("HAVE_INTEL_AVX1")
-    @avx1.write
-    @avx1_rorx.write
-    @avx1.endifa("HAVE_INTEL_AVX1")
-    @avx1.endifa("WOLFSSL_X86_64_BUILD")
-    @avx1.endifa("WOLFSSL_SM3")
+EOF
+    end
   end
 end
 

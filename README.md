@@ -52,13 +52,21 @@ The following files will be placed in wolfssl/wolfssl/wolfcrypt:
 
 The following files will be placed in wolfssl/wolfcrypt/src:
 * sm2.c
+* sp_sm2_arm32.c      (Assembly optimised SM2 for ARM 32-bit)
+* sp_sm2_arm64.c      (Assembly optimised SM2 for Aarch64)
+* sp_sm2_armthumb.c   (Assembly optimised SM2 for ARM Thumb)
+* sp_sm2_c32.c        (C only optimised SM2 for 32-bit CPUs)
+* sp_sm2_c64.c        (C only optimised SM2 for 64-bit CPUs)
+* sp_sm2_cortexm.c    (Assembly optimised SM2 for ARM Thumb2)
+* sp_sm2_x86_64_asm.S (Assembly optimised SM2 for Intel x64)
+* sp_sm2_x86_64.c     (C calling assembly optimised SM2 for Intel x64)
 * sm3.c
-* sm3_asm.S
+* sm3_asm.S           (Assembly optimised SM2 for Intel x64)
 * sm4.c
 
 ## Build wolfSSL
 
-Now you can build SM algorithms into wolfSSL.
+Once the files have been installed, you can build SM algorithms into wolfSSL.
 
 Choose which algorithms you require on the configure line:
 * --enable-sm3
@@ -78,6 +86,23 @@ cd ../wolfssl
 make
 sudo make install
 ```
+
+### Optimised SM2
+
+To use optimised implementations of SM2 you can either use C only code or C code
+with the faster assembly code.
+
+For C code only: --enable-sp
+For C and assembly code: --enable-sp --enable-sp-asm
+
+Optimised C code is available for 32 and 64 bit CPUs.
+
+Assmembly code is available for the following platforms:
+* Intel x64
+* Aarch64
+* ARM 32-bit
+* ARM Thumb2
+* ARM Thumb
 
 ## Testing Algorithms
 

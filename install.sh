@@ -26,6 +26,14 @@ fi
 echo -n "Copying files into wolfssl ... "
 cp sm2.h $WOLFSSL_DIR/wolfssl/wolfcrypt/
 cp sm2.c $WOLFSSL_DIR/wolfcrypt/src/
+cp sp_sm2_c32.c $WOLFSSL_DIR/wolfcrypt/src/
+cp sp_sm2_c64.c $WOLFSSL_DIR/wolfcrypt/src/
+cp sp_sm2_x86_64.c $WOLFSSL_DIR/wolfcrypt/src/
+cp sp_sm2_x86_64_asm.S $WOLFSSL_DIR/wolfcrypt/src/
+cp sp_sm2_arm32.c $WOLFSSL_DIR/wolfcrypt/src/
+cp sp_sm2_cortexm.c $WOLFSSL_DIR/wolfcrypt/src/
+cp sp_sm2_armthumb.c $WOLFSSL_DIR/wolfcrypt/src/
+cp sp_sm2_arm64.c $WOLFSSL_DIR/wolfcrypt/src/
 cp sm3.h $WOLFSSL_DIR/wolfssl/wolfcrypt/
 cp sm3.c $WOLFSSL_DIR/wolfcrypt/src/
 cp sm3_asm.S $WOLFSSL_DIR/wolfcrypt/src/
