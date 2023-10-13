@@ -34,6 +34,14 @@ check_file() {
 echo "Diffing files with those in wolfssl ... "
 check_file sm2.h wolfssl/wolfcrypt
 check_file sm2.c wolfcrypt/src
+check_file sp_sm2_c32.c wolfcrypt/src/
+check_file sp_sm2_c64.c wolfcrypt/src/
+check_file sp_sm2_x86_64.c wolfcrypt/src/
+check_file sp_sm2_x86_64_asm.S wolfcrypt/src/
+check_file sp_sm2_arm32.c wolfcrypt/src/
+check_file sp_sm2_cortexm.c wolfcrypt/src/
+check_file sp_sm2_armthumb.c wolfcrypt/src/
+check_file sp_sm2_arm64.c wolfcrypt/src/
 check_file sm3.h wolfssl/wolfcrypt
 check_file sm3.c wolfcrypt/src
 check_file sm3_asm.S wolfcrypt/src

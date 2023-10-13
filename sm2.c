@@ -1,6 +1,6 @@
 /* sm2.c
  *
- * Copyright (C) 2006-2022 wolfSSL Inc.
+ * Copyright (C) 2006-2023 wolfSSL Inc.
  *
  * This file is part of wolfSSL.
  *
@@ -475,16 +475,15 @@ int wc_ecc_sm2_sign_hash_ex(const byte* hash, word32 hashSz, WC_RNG* rng,
         err = BAD_FUNC_ARG;
     }
 
-#ifdef SM2_SP_IMPL_AVAILABLE
-#if defined(WOLFSSL_HAVE_SP_ECC) && !defined(WOLFSSL_SP_NO_256)
-    if (err == MP_OKAY) {
+#if defined(WOLFSSL_HAVE_SP_ECC) && defined(WOLFSSL_SP_SM2)
+    if ((err == MP_OKAY) && (key->dp->id == ECC_SM2P256V1)) {
         /* Use optimized code in SP to perform signing. */
         SAVE_VECTOR_REGISTERS(return _svr_ret;);
-        err = sp_ecc_sign_sm2_256(hash, hashSz, rng, &key->pubkey.k, r, s,
+        err = sp_ecc_sign_sm2_256(hash, hashSz, rng, key->k, r, s, NULL,
             key->heap);
         RESTORE_VECTOR_REGISTERS();
+        return err;
     }
-#endif
 #endif
 
 #ifndef WOLFSSL_SP_MATH
@@ -795,16 +794,15 @@ int wc_ecc_sm2_verify_hash_ex(mp_int *r, mp_int *s, const byte *hash,
         err = BAD_FUNC_ARG;
     }
 
-#ifdef SM2_SP_IMPL_AVAILABLE
-#if defined(WOLFSSL_HAVE_SP_ECC) && !defined(WOLFSSL_SP_NO_256)
-    if (err == MP_OKAY) {
+#if defined(WOLFSSL_HAVE_SP_ECC) && defined(WOLFSSL_SP_SM2)
+    if ((err == MP_OKAY) && (key->dp->id == ECC_SM2P256V1)) {
         /* Use optimized code in SP to perform verification. */
         SAVE_VECTOR_REGISTERS(return _svr_ret;);
         err = sp_ecc_verify_sm2_256(hash, hashSz, key->pubkey.x,
             key->pubkey.y, key->pubkey.z, r, s, res, key->heap);
         RESTORE_VECTOR_REGISTERS();
+        return err;
     }
-#endif
 #endif
 
 #ifndef WOLFSSL_SP_MATH
