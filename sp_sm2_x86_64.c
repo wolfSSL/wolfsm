@@ -17822,18 +17822,24 @@ int sp_ecc_verify_sm2_256(const byte* hash, word32 hashLen, const mp_int* pX,
         sp_256_from_bin(e, 4, hash, (int)hashLen);
         if (sp_256_cmp_sm2_4(r, e) < 0) {
             carry = sp_256_add_sm2_4(r, r, p256_sm2_order);
+            if (!sp_256_iszero_4(&carry)) {
+                *res = 0;
+                done = 1;
+            }
         }
-        sp_256_sub_sm2_4(e, r, e);
-        sp_256_norm_4(e);
-        /* x' == (r - e).z'.z' mod prime */
-        sp_256_mont_mul_sm2_4(s, e, p1->z, p256_sm2_mod, p256_sm2_mp_mod);
-        *res = (int)(sp_256_cmp_sm2_4(p1->x, s) == 0);
-        if (*res == 0) {
-            carry = sp_256_add_sm2_4(e, e, p256_sm2_order);
-            if (!carry && sp_256_cmp_sm2_4(e, p256_sm2_mod) < 0) {
-                /* x' == (r - e + order).z'.z' mod prime */
-                sp_256_mont_mul_sm2_4(s, e, p1->z, p256_sm2_mod, p256_sm2_mp_mod);
-                *res = (int)(sp_256_cmp_sm2_4(p1->x, s) == 0);
+        if (!done) {
+            sp_256_sub_sm2_4(e, r, e);
+            sp_256_norm_4(e);
+            /* x' == (r - e).z'.z' mod prime */
+            sp_256_mont_mul_sm2_4(s, e, p1->z, p256_sm2_mod, p256_sm2_mp_mod);
+            *res = (int)(sp_256_cmp_sm2_4(p1->x, s) == 0);
+            if (*res == 0) {
+                carry = sp_256_add_sm2_4(e, e, p256_sm2_order);
+                if (!carry && sp_256_cmp_sm2_4(e, p256_sm2_mod) < 0) {
+                    /* x' == (r - e + order).z'.z' mod prime */
+                    sp_256_mont_mul_sm2_4(s, e, p1->z, p256_sm2_mod, p256_sm2_mp_mod);
+                    *res = (int)(sp_256_cmp_sm2_4(p1->x, s) == 0);
+                }
             }
         }
     }
