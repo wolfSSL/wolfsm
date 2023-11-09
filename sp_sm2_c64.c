@@ -5581,6 +5581,11 @@ int sp_ecc_sign_sm2_256(const byte* hash, word32 hashLen, WC_RNG* rng,
                 sp_256_mont_mul_order_sm2_5(s, s, xInv);
             sp_256_norm_5(s);
 
+            c = sp_256_cmp_sm2_5(s, p256_sm2_order);
+            sp_256_cond_sub_sm2_5(s, s, p256_sm2_order,
+                0L - (sp_digit)(c >= 0));
+            sp_256_norm_5(s);
+
             /* Check that signature is usable. */
             if (sp_256_iszero_5(s) == 0) {
                 break;

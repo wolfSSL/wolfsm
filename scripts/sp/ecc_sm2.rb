@@ -357,6 +357,11 @@ EOF
                 sp_#{@total}_mont_mul_order_#{@namef}#{@words}(s, s, xInv);
             sp_#{@total}_norm_#{@words}(s);
 
+            c = sp_#{@total}_cmp_#{@namef}#{@words}(s, #{@cname}_order);
+            sp_#{@total}_cond_sub_#{@namef}#{@words}(s, s, #{@cname}_order,
+                0L - (sp_digit)(c >= 0));
+            sp_#{@total}_norm_#{@words}(s);
+
             /* Check that signature is usable. */
             if (sp_#{@total}_iszero_#{@words}(s) == 0) {
                 break;

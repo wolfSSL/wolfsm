@@ -1,5 +1,5 @@
-; /* sm3_asm
-;  *
+; /* sm3_asm.asm */
+; /*
 ;  * Copyright (C) 2006-2023 wolfSSL Inc.
 ;  *
 ;  * This file is part of wolfSSL.

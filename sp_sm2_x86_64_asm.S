@@ -1,5 +1,5 @@
-/* sp_sm2_x86_64_asm
- *
+/* sp_sm2_x86_64_asm.S */
+/*
  * Copyright (C) 2006-2023 wolfSSL Inc.
  *
  * This file is part of wolfSSL.
