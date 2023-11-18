@@ -40,10 +40,20 @@ git clone https://github.com/wolfssl/wolfssl.git
 
 To install the SM code into wolfSSL, use the install script:
 
-```
+```bash
 cd wolfsm
 ./install.sh
 ```
+
+If you have wolfssl installed in a different directory, such as `wolfssl-username`:
+
+```bash
+cd wolfsm
+./install.sh ../wolfssl-$USER
+```
+
+The following file will be placed in wolfssl/wolfssl:
+* certs_test_sm.h
 
 The following files will be placed in wolfssl/wolfssl/wolfcrypt:
 * sm2.h

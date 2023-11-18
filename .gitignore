@@ -1,0 +1,10 @@
+﻿# .gitignore exclusion rules
+
+# Visual Studio
+/.vs
+
+# Visual Studio Code Workspace Files
+*.vscode
+
+# Backup files
+*.bak
