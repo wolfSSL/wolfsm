@@ -1710,6 +1710,7 @@ static WC_INLINE void sm4_ccm_calc_auth_tag(wc_Sm4* sm4, const byte* plain,
     byte* tag, word32 tagSz)
 {
     ALIGN16 byte a[SM4_BLOCK_SIZE];
+    byte t[SM4_BLOCK_SIZE];
     word32 i;
 
     /* Nonce is in place. */
@@ -1745,9 +1746,9 @@ static WC_INLINE void sm4_ccm_calc_auth_tag(wc_Sm4* sm4, const byte* plain,
         b[SM4_BLOCK_SIZE - 1 - i] = 0;
     }
     /* Encrypt block into authentication tag block. */
-    sm4_encrypt(sm4->ks, b, tag);
+    sm4_encrypt(sm4->ks, b, t);
     /* XOR in other authentication tag data. */
-    xorbuf(tag, a, tagSz);
+    xorbufout(tag, t, a, tagSz);
 }
 
 /* Encrypt bytes using SM4-CCM implementation in C.
