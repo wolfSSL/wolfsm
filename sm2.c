@@ -514,7 +514,8 @@ int wc_ecc_sm2_sign_hash_ex(const byte* hash, word32 hashSz, WC_RNG* rng,
     /* Initialize MP integers needed. */
     if (err == MP_OKAY) {
         err = mp_init_multi(x, e, b, order, NULL, NULL);
-
+    }
+    if (err == MP_OKAY) {
         /* Initialize ephemeral key. */
         err = wc_ecc_init_ex(pub, key->heap, INVALID_DEVID);
         if (err == MP_OKAY) {

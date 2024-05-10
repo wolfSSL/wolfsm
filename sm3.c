@@ -35,6 +35,7 @@
 #include <wolfssl/wolfcrypt/sm3.h>
 #include <wolfssl/wolfcrypt/error-crypt.h>
 #include <wolfssl/wolfcrypt/cpuid.h>
+#include <wolfssl/wolfcrypt/hash.h>
 
 #ifdef NO_INLINE
     #include <wolfssl/wolfcrypt/misc.h>
@@ -225,7 +226,7 @@ static void sm3_set_compress_x64(void)
  * @param [in]  in   Buffer to reverse.
  */
 #define BSWAP32_16(out, in) \
-    ByteReverseWords((word32*)out, (const word32*)in, WC_SM3_BLOCK_SIZE)
+    ByteReverseWords((word32*)(out), (const word32*)(in), WC_SM3_BLOCK_SIZE)
 
 /* Reverse digest size worth of 32-bit words.
  *
@@ -233,7 +234,7 @@ static void sm3_set_compress_x64(void)
  * @param [in]  in   Buffer to reverse.
  */
 #define BSWAP32_8(out, in) \
-    ByteReverseWords((word32*)out, (const word32*)in, WC_SM3_DIGEST_SIZE)
+    ByteReverseWords((word32*)(out), (const word32*)(in), WC_SM3_DIGEST_SIZE)
 
 #endif
 
@@ -273,8 +274,8 @@ static void sm3_set_compress_x64(void)
  * @param [in] j  Index into array to use.
  * @return  New 32-bit value to be placed into array.
  */
-#define W(w, j)     P1(w[j-16] ^ w[j-9] ^ rotlFixed(w[j-3], 15)) ^ \
-                    rotlFixed(w[j-13], 7) ^ w[j-6]
+#define W(w, j)     P1((w)[(j)-16] ^ (w)[(j)-9] ^ rotlFixed((w)[(j)-3], 15)) ^ \
+                    rotlFixed((w)[(j)-13], 7) ^ (w)[(j)-6]
 
 #ifdef SM3_STANDARD
 /* Boolean function FF.
@@ -320,30 +321,53 @@ static void sm3_set_compress_x64(void)
 #ifndef WOLFSSL_SM3_SMALL
 
 /* A-H values for iteration i. */
-#define A(i)    v[(0-i) & 7]
-#define B(i)    v[(1-i) & 7]
-#define C(i)    v[(2-i) & 7]
-#define D(i)    v[(3-i) & 7]
-#define E(i)    v[(4-i) & 7]
-#define F(i)    v[(5-i) & 7]
-#define G(i)    v[(6-i) & 7]
-#define H(i)    v[(7-i) & 7]
+#define A(i)    v[(0-(i)) & 7]
+#define B(i)    v[(1-(i)) & 7]
+#define C(i)    v[(2-(i)) & 7]
+#define D(i)    v[(3-(i)) & 7]
+#define E(i)    v[(4-(i)) & 7]
+#define F(i)    v[(5-(i)) & 7]
+#define G(i)    v[(6-(i)) & 7]
+#define H(i)    v[(7-(i)) & 7]
 
 /* An iteration of merged message expansion and compression function.
  * Loop unrolled by 8 so that registers are not rotated around.
+ *
+ * Call when: i + j < 12
+ *
+ * @param [in] i  Index of unrolled 8 iterations.
+ * @param [in] j  Index of iteration - multiple of 8.
+ */
+#define SM3_ITER_INIT(i, j)                                             \
+    ss2 = rotlFixed(A(i), 12);                                          \
+    ss1 = rotlFixed((ss2 + E(i) + SM3_T[(j)+(i)]), 7);                  \
+    ss2 ^= ss1;                                                         \
+    ss1 += w[(j)+(i)];                                                  \
+    ss2 += w[(j)+(i)] ^ w[(j)+(i)+4];                                   \
+    tt1 = FF(A(i), B(i), C(i), (j)+(i)) + D(i) + ss2;                   \
+    tt2 = GG(E(i), F(i), G(i), (j)+(i)) + H(i) + ss1;                   \
+    B(i) = rotlFixed(B(i), 9);                                          \
+    F(i) = rotlFixed(F(i), 19);                                         \
+    H(i) = tt1;                                                         \
+    D(i) = P0(tt2)
+
+/* An iteration of merged message expansion and compression function.
+ * Loop unrolled by 8 so that registers are not rotated around.
+ *
+ * Call when: i + j >= 12
  *
  * @param [in] i  Index of unrolled 8 iterations.
  * @param [in] j  Index of iteration - multiple of 8.
  */
 #define SM3_ITER(i, j)                                                  \
-    if (j+i+4 >= 16) w[j+i+4] = W(w, j+i+4);                            \
+    w[(j)+(i)+4] = W(w, (j)+(i)+4);                                     \
     ss2 = rotlFixed(A(i), 12);                                          \
-    ss1 = rotlFixed((ss2 + E(i) + SM3_T[j+i]), 7);                      \
+    ss1 = rotlFixed((ss2 + E(i) + SM3_T[(j)+(i)]), 7);                  \
     ss2 ^= ss1;                                                         \
-    ss1 += w[j+i];                                                      \
-    ss2 += w[j+i] ^ w[j+i+4];                                           \
-    tt1 = FF(A(i), B(i), C(i), j+i) + D(i) + ss2;                       \
-    tt2 = GG(E(i), F(i), G(i), j+i) + H(i) + ss1;                       \
+    ss1 += w[(j)+(i)];                                                  \
+    ss2 += w[(j)+(i)] ^ w[(j)+(i)+4];                                   \
+    tt1 = FF(A(i), B(i), C(i), (j)+(i)) + D(i) + ss2;                   \
+    tt2 = GG(E(i), F(i), G(i), (j)+(i)) + H(i) + ss1;                   \
     B(i) = rotlFixed(B(i), 9);                                          \
     F(i) = rotlFixed(F(i), 19);                                         \
     H(i) = tt1;                                                         \
@@ -353,13 +377,13 @@ static void sm3_set_compress_x64(void)
 
 #ifdef SM3_PREPROCESSOR_CALC_T
 /* Rotate left by r. */
-#define ROTL(v, r) (((word32)v << r) | ((word32)v >> (32 - r)))
+#define ROTL(v, r) (((word32)(v) << (r)) | ((word32)(v) >> (32 - (r))))
 /* First table value - rotated by 0. */
 #define T_00_00(i)  0x79cc4519
 /* Table value calculation for iterations: 1 - 16. */
-#define T_01_15(i)  ROTL(0x79cc4519, i)
+#define T_01_15(i)  ROTL(0x79cc4519, (i))
 /* Table value calculation for iterations: 16 - 63. */
-#define T_16_63(i)  ROTL(0x7a879d8a, i)
+#define T_16_63(i)  ROTL(0x7a879d8a, (i))
 /* Table value for iteration 32 - rotated by 0. */
 #define T_32_32(i)  0x7a879d8a
 
@@ -508,12 +532,15 @@ static void sm3_compress_c(wc_Sm3* sm3, const word32* block)
     v[7] = sm3->v[7];
 
     /* First 8 iterations of the compression process. */
-    SM3_ITER(0, 0); SM3_ITER(1, 0); SM3_ITER(2, 0); SM3_ITER(3, 0);
-    SM3_ITER(4, 0); SM3_ITER(5, 0); SM3_ITER(6, 0); SM3_ITER(7, 0);
+    SM3_ITER_INIT(0, 0); SM3_ITER_INIT(1, 0);
+    SM3_ITER_INIT(2, 0); SM3_ITER_INIT(3, 0);
+    SM3_ITER_INIT(4, 0); SM3_ITER_INIT(5, 0);
+    SM3_ITER_INIT(6, 0); SM3_ITER_INIT(7, 0);
     /* Next 8 iterations of the compression process.
      * Last 4 iterations need to to calculate expansion values.
      */
-    SM3_ITER(0, 8); SM3_ITER(1, 8); SM3_ITER(2, 8); SM3_ITER(3, 8);
+    SM3_ITER_INIT(0, 8); SM3_ITER_INIT(1, 8);
+    SM3_ITER_INIT(2, 8); SM3_ITER_INIT(3, 8);
     SM3_ITER(4, 8); SM3_ITER(5, 8); SM3_ITER(6, 8); SM3_ITER(7, 8);
     /* Remaining iterations of the compression process.
      * Different FF and GG operations.
@@ -801,7 +828,7 @@ static void sm3_compress_len_c(wc_Sm3* sm3, const byte* data, word32 len)
         SM3_COMPRESS(sm3, buffer);
     #else
         /* Process block of data. */
-        SM3_COMPRESS(sm3, data);
+        SM3_COMPRESS(sm3, (word32*)data);
     #endif
         /* Move over processed data. */
         data += WC_SM3_BLOCK_SIZE;
