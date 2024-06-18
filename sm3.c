@@ -238,6 +238,32 @@ static void sm3_set_compress_x64(void)
 
 #endif
 
+#if defined(__aarch64__) || defined(__arm__)
+/* Reverse block size worth of 32-bit words.
+ *
+ * @param [out] out  Output buffer to write to.
+ * @param [in]  in   Buffer to reverse. May be unaligned.
+ */
+#define BSWAP32_16_UNALIGNED(out, in)       \
+    do {                                    \
+        word32 t[16];                       \
+        word32* tp = (word32*)in;           \
+        if (((wc_ptr_t)in & 0x3) != 0) {    \
+            XMEMCPY(t, in, sizeof(t));      \
+            tp = t;                         \
+        }                                   \
+        BSWAP32_16(out, tp);                \
+    } while (0)
+#else
+/* Reverse block size worth of 32-bit words.
+ *
+ * @param [out] out  Output buffer to write to.
+ * @param [in]  in   Buffer to reverse. May be unaligned.
+ */
+#define BSWAP32_16_UNALIGNED(out, in)   \
+    BSWAP32_16(out, in)
+#endif
+
 #if !(defined(WOLFSSL_X86_64_BUILD) || defined(WOLFSSL_X86_BUILD))
 /* Permutation function within the compression function.
  *
@@ -820,16 +846,16 @@ static void sm3_compress_len_c(wc_Sm3* sm3, const byte* data, word32 len)
 {
     do {
         /* Compress one block at a time. */
-    #ifdef LITTLE_ENDIAN_ORDER
+#ifdef LITTLE_ENDIAN_ORDER
         word32* buffer = sm3->buffer;
         /* Convert big-endian bytes to little-endian 32-bit words. */
-        BSWAP32_16(buffer, data);
+        BSWAP32_16_UNALIGNED(buffer, data);
         /* Process block of data. */
         SM3_COMPRESS(sm3, buffer);
-    #else
+#else
         /* Process block of data. */
         SM3_COMPRESS(sm3, (word32*)data);
-    #endif
+#endif
         /* Move over processed data. */
         data += WC_SM3_BLOCK_SIZE;
         len -= WC_SM3_BLOCK_SIZE;
