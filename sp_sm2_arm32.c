@@ -1,6 +1,6 @@
 /* sp.c
  *
- * Copyright (C) 2006-2023 wolfSSL Inc.
+ * Copyright (C) 2006-2024 wolfSSL Inc.
  *
  * This file is part of wolfSSL.
  *
@@ -55,6 +55,7 @@
 #ifdef __IAR_SYSTEMS_ICC__
 #define __asm__        asm
 #define __volatile__   volatile
+#define WOLFSSL_NO_VAR_ASSIGN_REG
 #endif /* __IAR_SYSTEMS_ICC__ */
 #ifdef __KEIL__
 #define __asm__        __asm
@@ -66,7 +67,7 @@
     do {                                                    \
         int ii;                                             \
         fprintf(stderr, name "=0x");                        \
-        for (ii = ((bits + 31) / 32) - 1; ii >= 0; ii--)    \
+        for (ii = (((bits) + 31) / 32) - 1; ii >= 0; ii--)  \
             fprintf(stderr, SP_PRINT_FMT, (var)[ii]);       \
         fprintf(stderr, "\n");                              \
     } while (0)
@@ -176,10 +177,13 @@ static void sp_256_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit*
 
     __asm__ __volatile__ (
         "sub	sp, sp, #0x40\n\t"
-        "mov	r5, #0\n\t"
-        "mov	r6, #0\n\t"
+        "ldr	lr, [%[a]]\n\t"
+        "ldr	r11, [%[b]]\n\t"
+        "umull	r8, r6, lr, r11\n\t"
+        "str	r8, [sp]\n\t"
         "mov	r7, #0\n\t"
         "mov	r8, #0\n\t"
+        "mov	r5, #4\n\t"
         "\n"
     "L_sp_256_mul_sm2_8_outer_%=: \n\t"
         "subs	r3, r5, #28\n\t"
@@ -225,12 +229,85 @@ static void sp_256_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit*
         "adcs	r7, r7, r10\n\t"
         "adc	r8, r8, #0\n\t"
 #endif
+        "ldr	lr, [%[a], r4]\n\t"
+        "ldr	r11, [%[b], r3]\n\t"
+#if defined(WOLFSSL_ARM_ARCH) && (WOLFSSL_ARM_ARCH < 4)
+        "lsl	r9, lr, #16\n\t"
+        "lsl	r10, r11, #16\n\t"
+        "lsr	r9, r9, #16\n\t"
+        "lsr	r10, r10, #16\n\t"
+        "mul	r10, r9, r10\n\t"
+        "adds	r6, r6, r10\n\t"
+        "adcs	r7, r7, #0\n\t"
+        "adc	r8, r8, #0\n\t"
+        "lsr	r10, r11, #16\n\t"
+        "mul	r9, r10, r9\n\t"
+        "lsr	r10, r9, #16\n\t"
+        "lsl	r9, r9, #16\n\t"
+        "adds	r6, r6, r9\n\t"
+        "adcs	r7, r7, r10\n\t"
+        "adc	r8, r8, #0\n\t"
+        "lsr	r9, lr, #16\n\t"
+        "lsr	r10, r11, #16\n\t"
+        "mul	r10, r9, r10\n\t"
+        "adds	r7, r7, r10\n\t"
+        "adc	r8, r8, #0\n\t"
+        "lsl	r10, r11, #16\n\t"
+        "lsr	r10, r10, #16\n\t"
+        "mul	r9, r10, r9\n\t"
+        "lsr	r10, r9, #16\n\t"
+        "lsl	r9, r9, #16\n\t"
+        "adds	r6, r6, r9\n\t"
+        "adcs	r7, r7, r10\n\t"
+        "adc	r8, r8, #0\n\t"
+#else
+        "umull	r9, r10, lr, r11\n\t"
+        "adds	r6, r6, r9\n\t"
+        "adcs	r7, r7, r10\n\t"
+        "adc	r8, r8, #0\n\t"
+#endif
         "add	r3, r3, #4\n\t"
         "sub	r4, r4, #4\n\t"
-        "cmp	r3, #32\n\t"
-        "beq	L_sp_256_mul_sm2_8_inner_done_%=\n\t"
-        "cmp	r3, r5\n\t"
-        "ble	L_sp_256_mul_sm2_8_inner_%=\n\t"
+        "cmp	r3, r4\n\t"
+        "bgt	L_sp_256_mul_sm2_8_inner_done_%=\n\t"
+        "blt	L_sp_256_mul_sm2_8_inner_%=\n\t"
+        "ldr	lr, [%[a], r3]\n\t"
+        "ldr	r11, [%[b], r3]\n\t"
+#if defined(WOLFSSL_ARM_ARCH) && (WOLFSSL_ARM_ARCH < 4)
+        "lsl	r9, lr, #16\n\t"
+        "lsl	r10, r11, #16\n\t"
+        "lsr	r9, r9, #16\n\t"
+        "lsr	r10, r10, #16\n\t"
+        "mul	r10, r9, r10\n\t"
+        "adds	r6, r6, r10\n\t"
+        "adcs	r7, r7, #0\n\t"
+        "adc	r8, r8, #0\n\t"
+        "lsr	r10, r11, #16\n\t"
+        "mul	r9, r10, r9\n\t"
+        "lsr	r10, r9, #16\n\t"
+        "lsl	r9, r9, #16\n\t"
+        "adds	r6, r6, r9\n\t"
+        "adcs	r7, r7, r10\n\t"
+        "adc	r8, r8, #0\n\t"
+        "lsr	r9, lr, #16\n\t"
+        "lsr	r10, r11, #16\n\t"
+        "mul	r10, r9, r10\n\t"
+        "adds	r7, r7, r10\n\t"
+        "adc	r8, r8, #0\n\t"
+        "lsl	r10, r11, #16\n\t"
+        "lsr	r10, r10, #16\n\t"
+        "mul	r9, r10, r9\n\t"
+        "lsr	r10, r9, #16\n\t"
+        "lsl	r9, r9, #16\n\t"
+        "adds	r6, r6, r9\n\t"
+        "adcs	r7, r7, r10\n\t"
+        "adc	r8, r8, #0\n\t"
+#else
+        "umull	r9, r10, lr, r11\n\t"
+        "adds	r6, r6, r9\n\t"
+        "adcs	r7, r7, r10\n\t"
+        "adc	r8, r8, #0\n\t"
+#endif
         "\n"
     "L_sp_256_mul_sm2_8_inner_done_%=: \n\t"
         "str	r6, [sp, r5]\n\t"
@@ -238,18 +315,50 @@ static void sp_256_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit*
         "mov	r7, r8\n\t"
         "mov	r8, #0\n\t"
         "add	r5, r5, #4\n\t"
-        "cmp	r5, #56\n\t"
+        "cmp	r5, #52\n\t"
         "ble	L_sp_256_mul_sm2_8_outer_%=\n\t"
+        "ldr	lr, [%[a], #28]\n\t"
+        "ldr	r11, [%[b], #28]\n\t"
+#if defined(WOLFSSL_ARM_ARCH) && (WOLFSSL_ARM_ARCH < 4)
+        "lsl	r9, lr, #16\n\t"
+        "lsl	r10, r11, #16\n\t"
+        "lsr	r9, r9, #16\n\t"
+        "lsr	r10, r10, #16\n\t"
+        "mul	r10, r9, r10\n\t"
+        "adds	r6, r6, r10\n\t"
+        "adc	r7, r7, #0\n\t"
+        "lsr	r10, r11, #16\n\t"
+        "mul	r9, r10, r9\n\t"
+        "lsr	r10, r9, #16\n\t"
+        "lsl	r9, r9, #16\n\t"
+        "adds	r6, r6, r9\n\t"
+        "adc	r7, r7, r10\n\t"
+        "lsr	r9, lr, #16\n\t"
+        "lsr	r10, r11, #16\n\t"
+        "mul	r10, r9, r10\n\t"
+        "add	r7, r7, r10\n\t"
+        "lsl	r10, r11, #16\n\t"
+        "lsr	r10, r10, #16\n\t"
+        "mul	r9, r10, r9\n\t"
+        "lsr	r10, r9, #16\n\t"
+        "lsl	r9, r9, #16\n\t"
+        "adds	r6, r6, r9\n\t"
+        "adc	r7, r7, r10\n\t"
+#else
+        "umlal	r6, r7, lr, r11\n\t"
+#endif
         "str	r6, [sp, r5]\n\t"
+        "add	r5, r5, #4\n\t"
+        "str	r7, [sp, r5]\n\t"
         "\n"
     "L_sp_256_mul_sm2_8_store_%=: \n\t"
-        "ldm	sp!, {r6, r7, r8, r9}\n\t"
-        "stm	%[r]!, {r6, r7, r8, r9}\n\t"
-        "subs	r5, r5, #16\n\t"
+        "ldm	sp!, {r3, r4, r6, r7, r8, r9, r10, r11}\n\t"
+        "stm	%[r]!, {r3, r4, r6, r7, r8, r9, r10, r11}\n\t"
+        "subs	r5, r5, #32\n\t"
         "bgt	L_sp_256_mul_sm2_8_store_%=\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "lr", "r11"
+        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "lr", "r11", "cc"
     );
 }
 
@@ -2245,7 +2354,7 @@ static void sp_256_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit*
         "stm	%[r]!, {r3, r4, r5, r6}\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r11", "r12"
+        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r11", "r12", "cc"
     );
 }
 
@@ -2598,7 +2707,7 @@ static void sp_256_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit*
         "add	sp, sp, #36\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr"
+        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
     );
 }
 
@@ -2729,7 +2838,7 @@ static void sp_256_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit*
         "add	sp, sp, #44\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r10", "r11", "r12", "r7", "r8", "r9", "lr"
+        : "memory", "r3", "r4", "r5", "r6", "r10", "r11", "r12", "r7", "r8", "r9", "lr", "cc"
     );
 }
 
@@ -2748,10 +2857,12 @@ static void sp_256_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p)
 
     __asm__ __volatile__ (
         "sub	sp, sp, #0x40\n\t"
-        "mov	r6, #0\n\t"
+        "ldr	lr, [%[a]]\n\t"
+        "umull	r8, r6, lr, lr\n\t"
+        "str	r8, [sp]\n\t"
         "mov	r7, #0\n\t"
         "mov	r8, #0\n\t"
-        "mov	r5, #0\n\t"
+        "mov	r5, #4\n\t"
         "\n"
     "L_sp_256_sqr_sm2_8_outer_%=: \n\t"
         "subs	r3, r5, #28\n\t"
@@ -2760,8 +2871,6 @@ static void sp_256_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p)
         "sub	r4, r5, r3\n\t"
         "\n"
     "L_sp_256_sqr_sm2_8_inner_%=: \n\t"
-        "cmp	r4, r3\n\t"
-        "beq	L_sp_256_sqr_sm2_8_op_sqr_%=\n\t"
         "ldr	lr, [%[a], r3]\n\t"
         "ldr	r11, [%[a], r4]\n\t"
 #if defined(WOLFSSL_ARM_ARCH) && (WOLFSSL_ARM_ARCH < 4)
@@ -2813,9 +2922,11 @@ static void sp_256_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p)
         "adcs	r7, r7, r10\n\t"
         "adc	r8, r8, #0\n\t"
 #endif
-        "bal	L_sp_256_sqr_sm2_8_op_done_%=\n\t"
-        "\n"
-    "L_sp_256_sqr_sm2_8_op_sqr_%=: \n\t"
+        "add	r3, r3, #4\n\t"
+        "sub	r4, r4, #4\n\t"
+        "cmp	r3, r4\n\t"
+        "bgt	L_sp_256_sqr_sm2_8_inner_done_%=\n\t"
+        "blt	L_sp_256_sqr_sm2_8_inner_%=\n\t"
         "ldr	lr, [%[a], r3]\n\t"
 #if defined(WOLFSSL_ARM_ARCH) && (WOLFSSL_ARM_ARCH < 4)
         "lsl	r9, lr, #16\n\t"
@@ -2844,34 +2955,50 @@ static void sp_256_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p)
         "adc	r8, r8, #0\n\t"
 #endif
         "\n"
-    "L_sp_256_sqr_sm2_8_op_done_%=: \n\t"
-        "add	r3, r3, #4\n\t"
-        "sub	r4, r4, #4\n\t"
-        "cmp	r3, #32\n\t"
-        "beq	L_sp_256_sqr_sm2_8_inner_done_%=\n\t"
-        "cmp	r3, r4\n\t"
-        "bgt	L_sp_256_sqr_sm2_8_inner_done_%=\n\t"
-        "cmp	r3, r5\n\t"
-        "ble	L_sp_256_sqr_sm2_8_inner_%=\n\t"
-        "\n"
     "L_sp_256_sqr_sm2_8_inner_done_%=: \n\t"
         "str	r6, [sp, r5]\n\t"
         "mov	r6, r7\n\t"
         "mov	r7, r8\n\t"
         "mov	r8, #0\n\t"
         "add	r5, r5, #4\n\t"
-        "cmp	r5, #56\n\t"
+        "cmp	r5, #52\n\t"
         "ble	L_sp_256_sqr_sm2_8_outer_%=\n\t"
+        "ldr	lr, [%[a], #28]\n\t"
+#if defined(WOLFSSL_ARM_ARCH) && (WOLFSSL_ARM_ARCH < 4)
+        "lsl	r9, lr, #16\n\t"
+        "lsr	r10, lr, #16\n\t"
+        "lsr	r9, r9, #16\n\t"
+        "mov	r11, r9\n\t"
+        "mul	r9, r11, r9\n\t"
+        "mov	r11, r10\n\t"
+        "mul	r10, r11, r10\n\t"
+        "adds	r6, r6, r9\n\t"
+        "adc	r7, r7, r10\n\t"
+        "lsr	r10, lr, #16\n\t"
+        "lsl	r9, lr, #16\n\t"
+        "lsr	r9, r9, #16\n\t"
+        "mul	r9, r10, r9\n\t"
+        "lsr	r10, r9, #15\n\t"
+        "lsl	r9, r9, #17\n\t"
+        "adds	r6, r6, r9\n\t"
+        "adc	r7, r7, r10\n\t"
+#else
+        "umull	r9, r10, lr, lr\n\t"
+        "adds	r6, r6, r9\n\t"
+        "adc	r7, r7, r10\n\t"
+#endif
         "str	r6, [sp, r5]\n\t"
+        "add	r5, r5, #4\n\t"
+        "str	r7, [sp, r5]\n\t"
         "\n"
     "L_sp_256_sqr_sm2_8_store_%=: \n\t"
-        "ldm	sp!, {r6, r7, r8, r9}\n\t"
-        "stm	%[r]!, {r6, r7, r8, r9}\n\t"
-        "subs	r5, r5, #16\n\t"
+        "ldm	sp!, {r3, r4, r6, r7, r8, r9, r10, r11}\n\t"
+        "stm	%[r]!, {r3, r4, r6, r7, r8, r9, r10, r11}\n\t"
+        "subs	r5, r5, #32\n\t"
         "bgt	L_sp_256_sqr_sm2_8_store_%=\n\t"
         : [r] "+r" (r), [a] "+r" (a)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "lr", "r11"
+        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "lr", "r11", "cc"
     );
 }
 
@@ -4082,7 +4209,7 @@ static void sp_256_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p)
         "stm	%[r]!, {r2, r3, r4, r8}\n\t"
         : [r] "+r" (r), [a] "+r" (a)
         :
-        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r12"
+        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r12", "cc"
     );
 }
 
@@ -4325,7 +4452,7 @@ static void sp_256_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p)
         "add	sp, sp, #0x44\n\t"
         : [r] "+r" (r), [a] "+r" (a)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr"
+        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
     );
 }
 
@@ -4441,7 +4568,7 @@ static void sp_256_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p)
         "add	sp, sp, #32\n\t"
         : [r] "+r" (r), [a] "+r" (a)
         :
-        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr"
+        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
     );
 }
 
@@ -4480,7 +4607,7 @@ static sp_digit sp_256_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_di
         "mov	%[r], r3\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r3", "r12"
+        : "memory", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r3", "r12", "cc"
     );
     return (uint32_t)(size_t)r;
 }
@@ -4517,7 +4644,7 @@ static sp_digit sp_256_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_di
         "adc	%[r], %[r], #0\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10"
+        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "cc"
     );
     return (uint32_t)(size_t)r;
 }
@@ -4553,7 +4680,7 @@ static sp_digit sp_256_sub_in_place_sm2_8(sp_digit* a_p, const sp_digit* b_p)
         "mov	%[a], r12\n\t"
         : [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r12", "lr"
+        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r12", "lr", "cc"
     );
     return (uint32_t)(size_t)a;
 }
@@ -4587,7 +4714,7 @@ static sp_digit sp_256_sub_in_place_sm2_8(sp_digit* a_p, const sp_digit* b_p)
         "sbc	%[a], r9, r9\n\t"
         : [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9"
+        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "cc"
     );
     return (uint32_t)(size_t)a;
 }
@@ -4628,7 +4755,7 @@ static sp_digit sp_256_cond_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const 
         "mov	%[r], r12\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b), [m] "+r" (m)
         :
-        : "memory", "r12", "lr", "r4", "r5", "r6"
+        : "memory", "r12", "lr", "r4", "r5", "r6", "cc"
     );
     return (uint32_t)(size_t)r;
 }
@@ -4682,7 +4809,7 @@ static sp_digit sp_256_cond_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const 
         "sbc	%[r], lr, lr\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b), [m] "+r" (m)
         :
-        : "memory", "r12", "lr", "r4", "r5", "r6", "r7"
+        : "memory", "r12", "lr", "r4", "r5", "r6", "r7", "cc"
     );
     return (uint32_t)(size_t)r;
 }
@@ -4782,7 +4909,7 @@ static void sp_256_mul_d_sm2_8(sp_digit* r_p, const sp_digit* a_p, sp_digit b_p)
         "str	r3, [%[r], #32]\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9"
+        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "cc"
     );
 }
 
@@ -5055,7 +5182,7 @@ static void sp_256_mul_d_sm2_8(sp_digit* r_p, const sp_digit* a_p, sp_digit b_p)
         "str	r5, [%[r]]\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8"
+        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "cc"
     );
 }
 
@@ -5114,7 +5241,7 @@ static sp_digit div_256_word_8(sp_digit d1_p, sp_digit d0_p, sp_digit div_p)
         "add	%[d1], r4, r3\n\t"
         : [d1] "+r" (d1), [d0] "+r" (d0), [div] "+r" (div)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8"
+        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "cc"
     );
     return (uint32_t)(size_t)d1;
 }
@@ -5252,7 +5379,7 @@ static sp_digit div_256_word_8(sp_digit d1_p, sp_digit d0_p, sp_digit div_p)
         "sub	%[d1], r3, r6\n\t"
         : [d1] "+r" (d1), [d0] "+r" (d0), [div] "+r" (div)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8"
+        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "cc"
     );
     return (uint32_t)(size_t)d1;
 }
@@ -5413,7 +5540,7 @@ static sp_int32 sp_256_cmp_sm2_8(const sp_digit* a_p, const sp_digit* b_p)
         "mov	%[a], r2\n\t"
         : [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r2", "r3", "r12", "lr", "r4", "r5", "r6"
+        : "memory", "r2", "r3", "r12", "lr", "r4", "r5", "r6", "cc"
     );
     return (uint32_t)(size_t)a;
 }
@@ -7827,7 +7954,7 @@ static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p
         "add	sp, sp, #0x44\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "lr", "r12"
+        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "lr", "r12", "cc"
     );
     (void)m_p;
     (void)mp_p;
@@ -8334,7 +8461,7 @@ static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p
         "add	sp, sp, #0x44\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr"
+        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
     );
     (void)m_p;
     (void)mp_p;
@@ -8619,7 +8746,7 @@ static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p
         "add	sp, sp, #0x4c\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r10", "r11", "r12", "r7", "r8", "r9", "lr"
+        : "memory", "r3", "r4", "r5", "r6", "r10", "r11", "r12", "r7", "r8", "r9", "lr", "cc"
     );
     (void)m_p;
     (void)mp_p;
@@ -9847,7 +9974,7 @@ static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p
         "add	sp, sp, #0x44\n\t"
         : [r] "+r" (r), [a] "+r" (a)
         :
-        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r12", "r8", "r9", "r10", "lr"
+        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r12", "r8", "r9", "r10", "lr", "cc"
     );
     (void)m_p;
     (void)mp_p;
@@ -10243,7 +10370,7 @@ static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p
         "add	sp, sp, #0x44\n\t"
         : [r] "+r" (r), [a] "+r" (a)
         :
-        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr"
+        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
     );
     (void)m_p;
     (void)mp_p;
@@ -10513,7 +10640,7 @@ static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p
         "add	sp, sp, #0x44\n\t"
         : [r] "+r" (r), [a] "+r" (a)
         :
-        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr"
+        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
     );
     (void)m_p;
     (void)mp_p;
@@ -10529,8 +10656,8 @@ static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p
  * m   Modulus (prime).
  * mp  Montgomery multiplier.
  */
-static void sp_256_mont_sqr_n_sm2_8(sp_digit* r, const sp_digit* a, int n,
-        const sp_digit* m, sp_digit mp)
+SP_NOINLINE static void sp_256_mont_sqr_n_sm2_8(sp_digit* r,
+    const sp_digit* a, int n, const sp_digit* m, sp_digit mp)
 {
     sp_256_mont_sqr_sm2_8(r, a, m, mp);
     for (; n > 1; n--) {
@@ -10917,7 +11044,7 @@ static SP_NOINLINE void sp_256_mont_reduce_sm2_8(sp_digit* a_p, const sp_digit* 
         "mov	%[mp], r3\n\t"
         : [a] "+r" (a), [m] "+r" (m), [mp] "+r" (mp)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11"
+        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "cc"
     );
     sp_256_cond_sub_sm2_8(a - 8, a, m, (sp_digit)0 - mp);
 }
@@ -11020,7 +11147,7 @@ static SP_NOINLINE void sp_256_mont_reduce_sm2_8(sp_digit* a_p, const sp_digit* 
         "mov	%[mp], r3\n\t"
         : [a] "+r" (a), [m] "+r" (m), [mp] "+r" (mp)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11"
+        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "cc"
     );
     sp_256_cond_sub_sm2_8(a - 8, a, m, (sp_digit)0 - mp);
 }
@@ -11105,7 +11232,7 @@ static SP_NOINLINE void sp_256_mont_reduce_sm2_8(sp_digit* a_p, const sp_digit* 
         "mov	%[mp], lr\n\t"
         : [a] "+r" (a), [m] "+r" (m), [mp] "+r" (mp)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11"
+        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "cc"
     );
     sp_256_cond_sub_sm2_8(a - 8, a, m, (sp_digit)0 - mp);
 }
@@ -11286,7 +11413,7 @@ static SP_NOINLINE void sp_256_mont_reduce_sm2_8(sp_digit* a_p, const sp_digit* 
         "add	sp, sp, #0x44\n\t"
         : [a] "+r" (a)
         :
-        : "memory", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr"
+        : "memory", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
     );
     (void)m_p;
     (void)mp_p;
@@ -11571,7 +11698,7 @@ static SP_NOINLINE void sp_256_mont_reduce_order_sm2_8(sp_digit* a_p, const sp_d
         "mov	%[mp], r3\n\t"
         : [a] "+r" (a), [m] "+r" (m), [mp] "+r" (mp)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11"
+        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "cc"
     );
     sp_256_cond_sub_sm2_8(a - 8, a, m, (sp_digit)0 - mp);
 }
@@ -11674,7 +11801,7 @@ static SP_NOINLINE void sp_256_mont_reduce_order_sm2_8(sp_digit* a_p, const sp_d
         "mov	%[mp], r3\n\t"
         : [a] "+r" (a), [m] "+r" (m), [mp] "+r" (mp)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11"
+        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "cc"
     );
     sp_256_cond_sub_sm2_8(a - 8, a, m, (sp_digit)0 - mp);
 }
@@ -11759,7 +11886,7 @@ static SP_NOINLINE void sp_256_mont_reduce_order_sm2_8(sp_digit* a_p, const sp_d
         "mov	%[mp], lr\n\t"
         : [a] "+r" (a), [m] "+r" (m), [mp] "+r" (mp)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11"
+        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "cc"
     );
     sp_256_cond_sub_sm2_8(a - 8, a, m, (sp_digit)0 - mp);
 }
@@ -11790,7 +11917,7 @@ static void sp_256_map_sm2_8(sp_point_256* r, const sp_point_256* p,
     sp_256_mont_reduce_sm2_8(r->x, p256_sm2_mod, p256_sm2_mp_mod);
     /* Reduce x to less than modulus */
     n = sp_256_cmp_sm2_8(r->x, p256_sm2_mod);
-    sp_256_cond_sub_sm2_8(r->x, r->x, p256_sm2_mod, ~(n >> 31));
+    sp_256_cond_sub_sm2_8(r->x, r->x, p256_sm2_mod, (sp_digit)~(n >> 31));
     sp_256_norm_8(r->x);
 
     /* y /= z^3 */
@@ -11799,7 +11926,7 @@ static void sp_256_map_sm2_8(sp_point_256* r, const sp_point_256* p,
     sp_256_mont_reduce_sm2_8(r->y, p256_sm2_mod, p256_sm2_mp_mod);
     /* Reduce y to less than modulus */
     n = sp_256_cmp_sm2_8(r->y, p256_sm2_mod);
-    sp_256_cond_sub_sm2_8(r->y, r->y, p256_sm2_mod, ~(n >> 31));
+    sp_256_cond_sub_sm2_8(r->y, r->y, p256_sm2_mod, (sp_digit)~(n >> 31));
     sp_256_norm_8(r->y);
 
     XMEMSET(r->z, 0, sizeof(r->z) / 2);
@@ -11857,7 +11984,7 @@ static void sp_256_mont_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_d
         "stm	%[r], {r5, r6, r7, r8, r9, r10, r11, r12}\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr"
+        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
     );
     (void)m_p;
 }
@@ -11907,7 +12034,7 @@ static void sp_256_mont_dbl_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_d
         "stm	%[r], {r4, r5, r6, r7, r8, r9, r10, r11}\n\t"
         : [r] "+r" (r), [a] "+r" (a)
         :
-        : "memory", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r2"
+        : "memory", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r2", "cc"
     );
     (void)m_p;
 }
@@ -11989,7 +12116,7 @@ static void sp_256_mont_tpl_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_d
         "stm	%[r], {r4, r5, r6, r7, r8, r9, r10, r11}\n\t"
         : [r] "+r" (r), [a] "+r" (a)
         :
-        : "memory", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r2", "r3", "r12"
+        : "memory", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r2", "r3", "r12", "cc"
     );
     (void)m_p;
 }
@@ -12043,7 +12170,7 @@ static void sp_256_mont_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_d
         "stm	%[r], {r5, r6, r7, r8, r9, r10, r11, r12}\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr"
+        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
     );
     (void)m_p;
 }
@@ -12120,7 +12247,7 @@ static void sp_256_mont_div2_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_
         "stm	%[r], {r8, r9, r10, r11}\n\t"
         : [r] "+r" (r), [a] "+r" (a), [m] "+r" (m)
         :
-        : "memory", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r3"
+        : "memory", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r3", "cc"
     );
 }
 
@@ -12415,8 +12542,8 @@ static void sp_256_proj_point_add_sm2_8(sp_point_256* r,
         sp_256_mont_sub_sm2_8(y, y, t5, p256_sm2_mod);
         {
             int i;
-            sp_digit maskp = 0 - (q->infinity & (!p->infinity));
-            sp_digit maskq = 0 - (p->infinity & (!q->infinity));
+            sp_digit maskp = (sp_digit)(0 - (q->infinity & (!p->infinity)));
+            sp_digit maskq = (sp_digit)(0 - (p->infinity & (!q->infinity)));
             sp_digit maskt = ~(maskp | maskq);
             sp_digit inf = (sp_digit)(p->infinity & q->infinity);
 
@@ -12433,7 +12560,7 @@ static void sp_256_proj_point_add_sm2_8(sp_point_256* r,
                           (z[i] & maskt);
             }
             r->z[0] |= inf;
-            r->infinity = (word32)inf;
+            r->infinity = (int)inf;
         }
     }
 }
@@ -12607,8 +12734,8 @@ static int sp_256_proj_point_add_sm2_8_nb(sp_ecc_ctx_t* sp_ctx, sp_point_256* r,
     {
         {
             int i;
-            sp_digit maskp = 0 - (q->infinity & (!p->infinity));
-            sp_digit maskq = 0 - (p->infinity & (!q->infinity));
+            sp_digit maskp = (sp_digit)(0 - (q->infinity & (!p->infinity)));
+            sp_digit maskq = (sp_digit)(0 - (p->infinity & (!q->infinity)));
             sp_digit maskt = ~(maskp | maskq);
             sp_digit inf = (sp_digit)(p->infinity & q->infinity);
 
@@ -12625,7 +12752,7 @@ static int sp_256_proj_point_add_sm2_8_nb(sp_ecc_ctx_t* sp_ctx, sp_point_256* r,
                           (ctx->z[i] & maskt);
             }
             r->z[0] |= inf;
-            r->infinity = (word32)inf;
+            r->infinity = (int)inf;
         }
         ctx->state = 25;
         break;
@@ -12680,7 +12807,7 @@ static void sp_256_get_point_16_sm2_8(sp_point_256* r, const sp_point_256* table
     r->z[6] = 0;
     r->z[7] = 0;
     for (i = 1; i < 16; i++) {
-        mask = 0 - (i == idx);
+        mask = (sp_digit)0 - (i == idx);
         r->x[0] |= mask & table[i].x[0];
         r->x[1] |= mask & table[i].x[1];
         r->x[2] |= mask & table[i].x[2];
@@ -12874,15 +13001,15 @@ static int sp_256_ecc_mulmod_fast_sm2_8(sp_point_256* r, const sp_point_256* g, 
     #endif
     }
 #ifndef WC_NO_CACHE_RESISTANT
-    #ifdef WOLFSSL_SP_SMALL_STACK
+#ifdef WOLFSSL_SP_SMALL_STACK
     if (p != NULL)
+#endif
+    {
+        ForceZero(p, sizeof(sp_point_256));
+    #ifdef WOLFSSL_SP_SMALL_STACK
+        XFREE(p, heap, DYNAMIC_TYPE_ECC);
     #endif
-        {
-            ForceZero(p, sizeof(sp_point_256));
-        #ifdef WOLFSSL_SP_SMALL_STACK
-            XFREE(p, heap, DYNAMIC_TYPE_ECC);
-        #endif
-        }
+    }
 #endif /* !WC_NO_CACHE_RESISTANT */
 #ifdef WOLFSSL_SP_SMALL_STACK
     if (t != NULL)
@@ -13078,8 +13205,8 @@ static void sp_256_proj_point_add_qz1_sm2_8(sp_point_256* r,
         sp_256_mont_sub_sm2_8(y, t3, t1, p256_sm2_mod);
         {
             int i;
-            sp_digit maskp = 0 - (q->infinity & (!p->infinity));
-            sp_digit maskq = 0 - (p->infinity & (!q->infinity));
+            sp_digit maskp = (sp_digit)(0 - (q->infinity & (!p->infinity)));
+            sp_digit maskq = (sp_digit)(0 - (p->infinity & (!q->infinity)));
             sp_digit maskt = ~(maskp | maskq);
             sp_digit inf = (sp_digit)(p->infinity & q->infinity);
 
@@ -13096,7 +13223,7 @@ static void sp_256_proj_point_add_qz1_sm2_8(sp_point_256* r,
                           (z[i] & maskt);
             }
             r->z[0] |= inf;
-            r->infinity = (word32)inf;
+            r->infinity = (int)inf;
         }
     }
 }
@@ -13186,8 +13313,7 @@ static int sp_256_gen_stripe_table_sm2_8(const sp_point_256* a,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (t != NULL)
-        XFREE(t, heap, DYNAMIC_TYPE_ECC);
+    XFREE(t, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -13224,7 +13350,7 @@ static void sp_256_get_entry_16_sm2_8(sp_point_256* r,
     r->y[6] = 0;
     r->y[7] = 0;
     for (i = 1; i < 16; i++) {
-        mask = 0 - (i == idx);
+        mask = (sp_digit)0 - (i == idx);
         r->x[0] |= mask & table[i].x[0];
         r->x[1] |= mask & table[i].x[1];
         r->x[2] |= mask & table[i].x[2];
@@ -13351,10 +13477,8 @@ static int sp_256_ecc_mulmod_stripe_sm2_8(sp_point_256* r, const sp_point_256* g
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (t != NULL)
-        XFREE(t, heap, DYNAMIC_TYPE_ECC);
-    if (rt != NULL)
-        XFREE(rt, heap, DYNAMIC_TYPE_ECC);
+    XFREE(t, heap, DYNAMIC_TYPE_ECC);
+    XFREE(rt, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -13387,8 +13511,10 @@ static THREAD_LS_T int sp_cache_256_last = -1;
 static THREAD_LS_T int sp_cache_256_inited = 0;
 
 #ifndef HAVE_THREAD_LS
+    #ifndef WOLFSSL_MUTEX_INITIALIZER
     static volatile int initCacheMutex_256 = 0;
-    static wolfSSL_Mutex sp_cache_256_lock;
+    #endif
+    static wolfSSL_Mutex sp_cache_256_lock WOLFSSL_MUTEX_INITIALIZER_CLAUSE(sp_cache_256_lock);
 #endif
 
 /* Get the cache entry for the point.
@@ -13486,10 +13612,12 @@ static int sp_256_ecc_mulmod_sm2_8(sp_point_256* r, const sp_point_256* g,
 #endif
 #ifndef HAVE_THREAD_LS
     if (err == MP_OKAY) {
+        #ifndef WOLFSSL_MUTEX_INITIALIZER
         if (initCacheMutex_256 == 0) {
             wc_InitMutex(&sp_cache_256_lock);
             initCacheMutex_256 = 1;
         }
+        #endif
         if (wc_LockMutex(&sp_cache_256_lock) != 0) {
             err = BAD_MUTEX_E;
         }
@@ -13606,8 +13734,7 @@ static int sp_256_gen_stripe_table_sm2_8(const sp_point_256* a,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (t != NULL)
-        XFREE(t, heap, DYNAMIC_TYPE_ECC);
+    XFREE(t, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -13644,7 +13771,7 @@ static void sp_256_get_entry_256_sm2_8(sp_point_256* r,
     r->y[6] = 0;
     r->y[7] = 0;
     for (i = 1; i < 256; i++) {
-        mask = 0 - (i == idx);
+        mask = (sp_digit)0 - (i == idx);
         r->x[0] |= mask & table[i].x[0];
         r->x[1] |= mask & table[i].x[1];
         r->x[2] |= mask & table[i].x[2];
@@ -13771,10 +13898,8 @@ static int sp_256_ecc_mulmod_stripe_sm2_8(sp_point_256* r, const sp_point_256* g
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (t != NULL)
-        XFREE(t, heap, DYNAMIC_TYPE_ECC);
-    if (rt != NULL)
-        XFREE(rt, heap, DYNAMIC_TYPE_ECC);
+    XFREE(t, heap, DYNAMIC_TYPE_ECC);
+    XFREE(rt, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -13807,8 +13932,10 @@ static THREAD_LS_T int sp_cache_256_last = -1;
 static THREAD_LS_T int sp_cache_256_inited = 0;
 
 #ifndef HAVE_THREAD_LS
+    #ifndef WOLFSSL_MUTEX_INITIALIZER
     static volatile int initCacheMutex_256 = 0;
-    static wolfSSL_Mutex sp_cache_256_lock;
+    #endif
+    static wolfSSL_Mutex sp_cache_256_lock WOLFSSL_MUTEX_INITIALIZER_CLAUSE(sp_cache_256_lock);
 #endif
 
 /* Get the cache entry for the point.
@@ -13906,10 +14033,12 @@ static int sp_256_ecc_mulmod_sm2_8(sp_point_256* r, const sp_point_256* g,
 #endif
 #ifndef HAVE_THREAD_LS
     if (err == MP_OKAY) {
+        #ifndef WOLFSSL_MUTEX_INITIALIZER
         if (initCacheMutex_256 == 0) {
             wc_InitMutex(&sp_cache_256_lock);
             initCacheMutex_256 = 1;
         }
+        #endif
         if (wc_LockMutex(&sp_cache_256_lock) != 0) {
             err = BAD_MUTEX_E;
         }
@@ -13988,10 +14117,8 @@ int sp_ecc_mulmod_sm2_256(const mp_int* km, const ecc_point* gm, ecc_point* r,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (k != NULL)
-        XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    if (point != NULL)
-        XFREE(point, heap, DYNAMIC_TYPE_ECC);
+    XFREE(k, heap, DYNAMIC_TYPE_ECC);
+    XFREE(point, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -14068,10 +14195,8 @@ int sp_ecc_mulmod_add_sm2_256(const mp_int* km, const ecc_point* gm,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (k != NULL)
-        XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    if (point != NULL)
-        XFREE(point, heap, DYNAMIC_TYPE_ECC);
+    XFREE(k, heap, DYNAMIC_TYPE_ECC);
+    XFREE(point, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -15538,10 +15663,8 @@ int sp_ecc_mulmod_base_sm2_256(const mp_int* km, ecc_point* r, int map, void* he
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (k != NULL)
-        XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    if (point != NULL)
-        XFREE(point, heap, DYNAMIC_TYPE_ECC);
+    XFREE(k, heap, DYNAMIC_TYPE_ECC);
+    XFREE(point, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -15616,10 +15739,8 @@ int sp_ecc_mulmod_base_add_sm2_256(const mp_int* km, const ecc_point* am,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (k != NULL)
-        XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    if (point)
-        XFREE(point, heap, DYNAMIC_TYPE_ECC);
+    XFREE(k, heap, DYNAMIC_TYPE_ECC);
+    XFREE(point, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -15651,7 +15772,7 @@ static void sp_256_add_one_sm2_8(sp_digit* a_p)
         "stm	%[a]!, {r1, r2, r3, r4}\n\t"
         : [a] "+r" (a)
         :
-        : "memory", "r1", "r2", "r3", "r4"
+        : "memory", "r1", "r2", "r3", "r4", "cc"
     );
 }
 
@@ -15702,6 +15823,7 @@ static void sp_256_from_bin(sp_digit* r, int size, const byte* a, int n)
  */
 static int sp_256_ecc_gen_k_sm2_8(WC_RNG* rng, sp_digit* k)
 {
+#ifndef WC_NO_RNG
     int err;
     byte buf[32];
 
@@ -15718,6 +15840,11 @@ static int sp_256_ecc_gen_k_sm2_8(WC_RNG* rng, sp_digit* k)
     while (err == 0);
 
     return err;
+#else
+    (void)rng;
+    (void)k;
+    return NOT_COMPILED_IN;
+#endif
 }
 
 /* Makes a random EC key pair.
@@ -15796,12 +15923,9 @@ int sp_ecc_make_key_sm2_256(WC_RNG* rng, mp_int* priv, ecc_point* pub, void* hea
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (k != NULL)
-        XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    if (point != NULL) {
-        /* point is not sensitive, so no need to zeroize */
-        XFREE(point, heap, DYNAMIC_TYPE_ECC);
-    }
+    XFREE(k, heap, DYNAMIC_TYPE_ECC);
+    /* point is not sensitive, so no need to zeroize */
+    XFREE(point, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -15959,10 +16083,8 @@ int sp_ecc_secret_gen_sm2_256(const mp_int* priv, const ecc_point* pub, byte* ou
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (k != NULL)
-        XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    if (point != NULL)
-        XFREE(point, heap, DYNAMIC_TYPE_ECC);
+    XFREE(k, heap, DYNAMIC_TYPE_ECC);
+    XFREE(point, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -16052,7 +16174,7 @@ static sp_digit sp_256_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_di
         "mov	%[r], r12\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r12", "lr"
+        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r12", "lr", "cc"
     );
     return (uint32_t)(size_t)r;
 }
@@ -16088,7 +16210,7 @@ static sp_digit sp_256_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_di
         "sbc	%[r], r6, r6\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10"
+        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "cc"
     );
     return (uint32_t)(size_t)r;
 }
@@ -16132,7 +16254,7 @@ static sp_digit sp_256_cond_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const 
         "mov	%[r], lr\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b), [m] "+r" (m)
         :
-        : "memory", "r12", "lr", "r4", "r5", "r6"
+        : "memory", "r12", "lr", "r4", "r5", "r6", "cc"
     );
     return (uint32_t)(size_t)r;
 }
@@ -16186,7 +16308,7 @@ static sp_digit sp_256_cond_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const 
         "adc	%[r], r8, r8\n\t"
         : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b), [m] "+r" (m)
         :
-        : "memory", "r12", "lr", "r4", "r5", "r6", "r7", "r8"
+        : "memory", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "cc"
     );
     return (uint32_t)(size_t)r;
 }
@@ -16650,9 +16772,6 @@ int sp_ecc_verify_sm2_256(const byte* hash, word32 hashLen, const mp_int* pX,
         /* (r - e + n*order).z'.z' mod prime == (s.G + t.Q)->x' */
         /* Load e, subtract from r. */
         sp_256_from_bin(e, 8, hash, (int)hashLen);
-        if (sp_256_cmp_sm2_8(r, e) < 0) {
-            carry = sp_256_add_sm2_8(r, r, p256_sm2_order);
-        }
         sp_256_sub_sm2_8(e, r, e);
         sp_256_norm_8(e);
         /* x' == (r - e).z'.z' mod prime */
@@ -16680,7 +16799,7 @@ int sp_ecc_verify_sm2_256(const byte* hash, word32 hashLen, const mp_int* pX,
 #endif /* HAVE_ECC_VERIFY */
 
 #ifdef HAVE_ECC_CHECK_KEY
-/* Check that the x and y oridinates are a valid point on the curve.
+/* Check that the x and y ordinates are a valid point on the curve.
  *
  * point  EC point.
  * heap   Heap to use if dynamically allocating.
@@ -16729,14 +16848,13 @@ static int sp_256_ecc_is_point_sm2_8(const sp_point_256* point,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (t1 != NULL)
-        XFREE(t1, heap, DYNAMIC_TYPE_ECC);
+    XFREE(t1, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
 }
 
-/* Check that the x and y oridinates are a valid point on the curve.
+/* Check that the x and y ordinates are a valid point on the curve.
  *
  * pX  X ordinate of EC point.
  * pY  Y ordinate of EC point.
@@ -16769,8 +16887,7 @@ int sp_ecc_is_point_sm2_256(const mp_int* pX, const mp_int* pY)
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (pub != NULL)
-        XFREE(pub, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(pub, NULL, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -16878,10 +16995,8 @@ int sp_ecc_check_key_sm2_256(const mp_int* pX, const mp_int* pY,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (pub != NULL)
-        XFREE(pub, heap, DYNAMIC_TYPE_ECC);
-    if (priv != NULL)
-        XFREE(priv, heap, DYNAMIC_TYPE_ECC);
+    XFREE(pub, heap, DYNAMIC_TYPE_ECC);
+    XFREE(priv, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -16960,10 +17075,8 @@ int sp_ecc_proj_add_point_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (tmp != NULL)
-        XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
-    if (p != NULL)
-        XFREE(p, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(p, NULL, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -17028,10 +17141,8 @@ int sp_ecc_proj_dbl_point_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (tmp != NULL)
-        XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
-    if (p != NULL)
-        XFREE(p, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(p, NULL, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -17092,10 +17203,8 @@ int sp_ecc_map_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ)
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (tmp != NULL)
-        XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
-    if (p != NULL)
-        XFREE(p, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(p, NULL, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -17210,8 +17319,7 @@ int sp_ecc_uncompress_sm2_256(mp_int* xm, int odd, mp_int* ym)
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (x != NULL)
-        XFREE(x, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(x, NULL, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
