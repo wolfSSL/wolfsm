@@ -9451,6 +9451,9 @@ int sp_ecc_verify_sm2_256(const byte* hash, word32 hashLen, const mp_int* pX,
         /* (r - e + n*order).z'.z' mod prime == (s.G + t.Q)->x' */
         /* Load e, subtract from r. */
         sp_256_from_bin(e, 8, hash, (int)hashLen);
+        if (sp_256_cmp_sm2_8(r, e) < 0) {
+            (void)sp_256_add_sm2_8(r, r, p256_sm2_order);
+        }
         sp_256_sub_sm2_8(e, r, e);
         sp_256_norm_8(e);
         /* x' == (r - e).z'.z' mod prime */
