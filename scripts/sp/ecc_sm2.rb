@@ -580,6 +580,9 @@ EOF
         /* (r - e + n*order).z'.z' mod prime == (s.G + t.Q)->x' */
         /* Load e, subtract from r. */
         sp_#{@total}_from_bin(e, #{@words}, hash, (int)hashLen);
+        if (sp_#{@total}_cmp_#{@namef}#{@words}(r, e) < 0) {
+            (void)sp_#{@total}_add_#{@namef}#{@words}(r, r, #{@cname}_order);
+        }
         sp_#{@total}_sub_#{@namef}#{@words}(e, r, e);
         sp_#{@total}_norm_#{@words}(e);
         /* x' == (r - e).z'.z' mod prime */
