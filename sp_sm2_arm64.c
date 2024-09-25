@@ -1,6 +1,6 @@
 /* sp.c
  *
- * Copyright (C) 2006-2023 wolfSSL Inc.
+ * Copyright (C) 2006-2024 wolfSSL Inc.
  *
  * This file is part of wolfSSL.
  *
@@ -55,6 +55,7 @@
 #ifdef __IAR_SYSTEMS_ICC__
 #define __asm__        asm
 #define __volatile__   volatile
+#define WOLFSSL_NO_VAR_ASSIGN_REG
 #endif /* __IAR_SYSTEMS_ICC__ */
 #ifdef __KEIL__
 #define __asm__        __asm
@@ -66,7 +67,7 @@
     do {                                                    \
         int ii;                                             \
         fprintf(stderr, name "=0x");                        \
-        for (ii = ((bits + 63) / 64) - 1; ii >= 0; ii--)    \
+        for (ii = (((bits) + 63) / 64) - 1; ii >= 0; ii--)  \
             fprintf(stderr, SP_PRINT_FMT, (var)[ii]);       \
         fprintf(stderr, "\n");                              \
     } while (0)
@@ -218,7 +219,8 @@ static void sp_256_mul_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit* b)
  * a  A single precision integer.
  * b  A single precision integer.
  */
-static void sp_256_mul_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit* b)
+SP_NOINLINE static void sp_256_mul_sm2_4(sp_digit* r, const sp_digit* a,
+    const sp_digit* b)
 {
     __asm__ __volatile__ (
         "ldp	x13, x14, [%[a], 0]\n\t"
@@ -324,7 +326,7 @@ static void sp_256_mul_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit* b)
  * r  A single precision integer.
  * a  A single precision integer.
  */
-static void sp_256_sqr_sm2_4(sp_digit* r, const sp_digit* a)
+SP_NOINLINE static void sp_256_sqr_sm2_4(sp_digit* r, const sp_digit* a)
 {
     __asm__ __volatile__ (
         "ldp	x12, x13, [%[a], 0]\n\t"
@@ -1368,8 +1370,8 @@ static void sp_256_mont_sqr_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
  * m   Modulus (prime).
  * mp  Montgomery multiplier.
  */
-static void sp_256_mont_sqr_n_sm2_4(sp_digit* r, const sp_digit* a, int n,
-        const sp_digit* m, sp_digit mp)
+SP_NOINLINE static void sp_256_mont_sqr_n_sm2_4(sp_digit* r,
+    const sp_digit* a, int n, const sp_digit* m, sp_digit mp)
 {
     sp_256_mont_sqr_sm2_4(r, a, m, mp);
     for (; n > 1; n--) {
@@ -1599,7 +1601,7 @@ static void sp_256_map_sm2_4(sp_point_256* r, const sp_point_256* p,
     sp_256_mont_reduce_sm2_4(r->x, p256_sm2_mod, p256_sm2_mp_mod);
     /* Reduce x to less than modulus */
     n = sp_256_cmp_sm2_4(r->x, p256_sm2_mod);
-    sp_256_cond_sub_sm2_4(r->x, r->x, p256_sm2_mod, ~(n >> 63));
+    sp_256_cond_sub_sm2_4(r->x, r->x, p256_sm2_mod, (sp_digit)~(n >> 63));
     sp_256_norm_4(r->x);
 
     /* y /= z^3 */
@@ -1608,7 +1610,7 @@ static void sp_256_map_sm2_4(sp_point_256* r, const sp_point_256* p,
     sp_256_mont_reduce_sm2_4(r->y, p256_sm2_mod, p256_sm2_mp_mod);
     /* Reduce y to less than modulus */
     n = sp_256_cmp_sm2_4(r->y, p256_sm2_mod);
-    sp_256_cond_sub_sm2_4(r->y, r->y, p256_sm2_mod, ~(n >> 63));
+    sp_256_cond_sub_sm2_4(r->y, r->y, p256_sm2_mod, (sp_digit)~(n >> 63));
     sp_256_norm_4(r->y);
 
     XMEMSET(r->z, 0, sizeof(r->z) / 2);
@@ -1621,7 +1623,8 @@ static void sp_256_map_sm2_4(sp_point_256* r, const sp_point_256* p,
  * a   Number to double in Montgomery form.
  * m   Modulus (prime).
  */
-static void sp_256_mont_dbl_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit* m)
+SP_NOINLINE static void sp_256_mont_dbl_sm2_4(sp_digit* r, const sp_digit* a,
+    const sp_digit* m)
 {
     __asm__ __volatile__ (
         "ldp   x3, x4, [%[a]]\n\t"
@@ -1661,7 +1664,8 @@ static void sp_256_mont_dbl_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
  * a   Number to triple in Montgomery form.
  * m   Modulus (prime).
  */
-static void sp_256_mont_tpl_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit* m)
+SP_NOINLINE static void sp_256_mont_tpl_sm2_4(sp_digit* r, const sp_digit* a,
+    const sp_digit* m)
 {
     __asm__ __volatile__ (
         "ldp   x9, x10, [%[a]]\n\t"
@@ -1717,8 +1721,8 @@ static void sp_256_mont_tpl_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
  * b   Number to subtract with in Montgomery form.
  * m   Modulus (prime).
  */
-static void sp_256_mont_sub_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit* b,
-        const sp_digit* m)
+SP_NOINLINE static void sp_256_mont_sub_sm2_4(sp_digit* r, const sp_digit* a,
+    const sp_digit* b, const sp_digit* m)
 {
     __asm__ __volatile__ (
         "ldp   x4, x5, [%[a], 0]\n\t"
@@ -1759,7 +1763,8 @@ static void sp_256_mont_sub_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
  * a  Number to divide.
  * m  Modulus (prime).
  */
-static void sp_256_mont_div2_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit* m)
+SP_NOINLINE static void sp_256_mont_div2_sm2_4(sp_digit* r, const sp_digit* a,
+    const sp_digit* m)
 {
     __asm__ __volatile__ (
         "ldp   x3, x4, [%[a], 0]\n\t"
@@ -2349,7 +2354,8 @@ static void sp_256_proj_point_add_sm2_4(sp_point_256* r,
         : [r] "r" (r), [p] "r" (p), [q] "r" (q), [x] "r" (x),
           [y] "r" (y), [z] "r" (z)
         : "memory", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17",
-          "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28"
+          "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
+          "cc"
     );
 }
     }
@@ -2581,7 +2587,8 @@ static int sp_256_proj_point_add_sm2_4_nb(sp_ecc_ctx_t* sp_ctx, sp_point_256* r,
         : [r] "r" (r), [p] "r" (p), [q] "r" (q), [x] "r" (ctx->x),
           [y] "r" (ctx->y), [z] "r" (ctx->z)
         : "memory", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17",
-          "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28"
+          "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
+          "cc"
     );
 }
         ctx->state = 25;
@@ -2791,7 +2798,7 @@ static void sp_256_ecc_recode_6_4(const sp_digit* k, ecc_recode_256* v)
     n = k[j];
     o = 0;
     for (i=0; i<43; i++) {
-        y = (int8_t)n;
+        y = (uint8_t)(int8_t)n;
         if (o + 6 < 64) {
             y &= 0x3f;
             n >>= 6;
@@ -2824,8 +2831,8 @@ static void sp_256_ecc_recode_6_4(const sp_digit* k, ecc_recode_256* v)
  * table  Table - start of the entries to access
  * idx    Index of entry to retrieve.
  */
-static void sp_256_get_point_33_sm2_4(sp_point_256* r, const sp_point_256* table,
-    int idx)
+SP_NOINLINE static void sp_256_get_point_33_sm2_4(sp_point_256* r,
+    const sp_point_256* table, int idx)
 {
     __asm__ __volatile__ (
         "mov	w30, #1\n\t"
@@ -2882,7 +2889,7 @@ static void sp_256_get_point_33_sm2_4(sp_point_256* r, const sp_point_256* table
         "stp	x13, x14, [%[r], #144]\n\t"
        : [table] "+r" (table)
        : [r] "r" (r), [idx] "r" (idx)
-       : "memory", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "x19", "w30"
+       : "memory", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "x19", "w30", "cc"
     );
 }
 #endif /* !WC_NO_CACHE_RESISTANT */
@@ -3022,10 +3029,8 @@ static int sp_256_ecc_mulmod_win_add_sub_sm2_4(sp_point_256* r, const sp_point_2
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (t != NULL)
-        XFREE(t, heap, DYNAMIC_TYPE_ECC);
-    if (tmp != NULL)
-        XFREE(tmp, heap, DYNAMIC_TYPE_ECC);
+    XFREE(t, heap, DYNAMIC_TYPE_ECC);
+    XFREE(tmp, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -3151,7 +3156,8 @@ static void sp_256_proj_point_add_qz1_sm2_4(sp_point_256* r,
         : [r] "r" (r), [p] "r" (p), [q] "r" (q), [x] "r" (x),
           [y] "r" (y), [z] "r" (z)
         : "memory", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17",
-          "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28"
+          "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
+          "cc"
     );
 }
     }
@@ -3266,8 +3272,7 @@ static int sp_256_gen_stripe_table_sm2_4(const sp_point_256* a,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (t != NULL)
-        XFREE(t, heap, DYNAMIC_TYPE_ECC);
+    XFREE(t, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -3282,7 +3287,7 @@ static int sp_256_gen_stripe_table_sm2_4(const sp_point_256* a,
  * table  Table - start of the entries to access
  * idx    Index of entry to retrieve.
  */
-static void sp_256_get_entry_64_sm2_4(sp_point_256* r,
+SP_NOINLINE static void sp_256_get_entry_64_sm2_4(sp_point_256* r,
     const sp_table_entry_256* table, int idx)
 {
     __asm__ __volatile__ (
@@ -3326,7 +3331,7 @@ static void sp_256_get_entry_64_sm2_4(sp_point_256* r,
         "stp	x9, x10, [%[r], #80]\n\t"
        : [table] "+r" (table)
        : [r] "r" (r), [idx] "r" (idx)
-       : "memory", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "x19", "w30"
+       : "memory", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "x19", "w30", "cc"
     );
 }
 #endif /* !WC_NO_CACHE_RESISTANT */
@@ -3437,10 +3442,8 @@ static int sp_256_ecc_mulmod_stripe_sm2_4(sp_point_256* r, const sp_point_256* g
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (t != NULL)
-        XFREE(t, heap, DYNAMIC_TYPE_ECC);
-    if (rt != NULL)
-        XFREE(rt, heap, DYNAMIC_TYPE_ECC);
+    XFREE(t, heap, DYNAMIC_TYPE_ECC);
+    XFREE(rt, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -3474,8 +3477,10 @@ static THREAD_LS_T int sp_cache_256_last = -1;
 static THREAD_LS_T int sp_cache_256_inited = 0;
 
 #ifndef HAVE_THREAD_LS
+    #ifndef WOLFSSL_MUTEX_INITIALIZER
     static volatile int initCacheMutex_256 = 0;
-    static wolfSSL_Mutex sp_cache_256_lock;
+    #endif
+    static wolfSSL_Mutex sp_cache_256_lock WOLFSSL_MUTEX_INITIALIZER_CLAUSE(sp_cache_256_lock);
 #endif
 
 /* Get the cache entry for the point.
@@ -3573,10 +3578,12 @@ static int sp_256_ecc_mulmod_sm2_4(sp_point_256* r, const sp_point_256* g,
 #endif
 #ifndef HAVE_THREAD_LS
     if (err == MP_OKAY) {
+        #ifndef WOLFSSL_MUTEX_INITIALIZER
         if (initCacheMutex_256 == 0) {
             wc_InitMutex(&sp_cache_256_lock);
             initCacheMutex_256 = 1;
         }
+        #endif
         if (wc_LockMutex(&sp_cache_256_lock) != 0) {
             err = BAD_MUTEX_E;
         }
@@ -3695,8 +3702,7 @@ static int sp_256_gen_stripe_table_sm2_4(const sp_point_256* a,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (t != NULL)
-        XFREE(t, heap, DYNAMIC_TYPE_ECC);
+    XFREE(t, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -3711,7 +3717,7 @@ static int sp_256_gen_stripe_table_sm2_4(const sp_point_256* a,
  * table  Table - start of the entries to access
  * idx    Index of entry to retrieve.
  */
-static void sp_256_get_entry_256_sm2_4(sp_point_256* r,
+SP_NOINLINE static void sp_256_get_entry_256_sm2_4(sp_point_256* r,
     const sp_table_entry_256* table, int idx)
 {
     __asm__ __volatile__ (
@@ -3755,7 +3761,7 @@ static void sp_256_get_entry_256_sm2_4(sp_point_256* r,
         "stp	x9, x10, [%[r], #80]\n\t"
        : [table] "+r" (table)
        : [r] "r" (r), [idx] "r" (idx)
-       : "memory", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "x19", "w30"
+       : "memory", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "x19", "w30", "cc"
     );
 }
 #endif /* !WC_NO_CACHE_RESISTANT */
@@ -3866,10 +3872,8 @@ static int sp_256_ecc_mulmod_stripe_sm2_4(sp_point_256* r, const sp_point_256* g
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (t != NULL)
-        XFREE(t, heap, DYNAMIC_TYPE_ECC);
-    if (rt != NULL)
-        XFREE(rt, heap, DYNAMIC_TYPE_ECC);
+    XFREE(t, heap, DYNAMIC_TYPE_ECC);
+    XFREE(rt, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -3903,8 +3907,10 @@ static THREAD_LS_T int sp_cache_256_last = -1;
 static THREAD_LS_T int sp_cache_256_inited = 0;
 
 #ifndef HAVE_THREAD_LS
+    #ifndef WOLFSSL_MUTEX_INITIALIZER
     static volatile int initCacheMutex_256 = 0;
-    static wolfSSL_Mutex sp_cache_256_lock;
+    #endif
+    static wolfSSL_Mutex sp_cache_256_lock WOLFSSL_MUTEX_INITIALIZER_CLAUSE(sp_cache_256_lock);
 #endif
 
 /* Get the cache entry for the point.
@@ -4002,10 +4008,12 @@ static int sp_256_ecc_mulmod_sm2_4(sp_point_256* r, const sp_point_256* g,
 #endif
 #ifndef HAVE_THREAD_LS
     if (err == MP_OKAY) {
+        #ifndef WOLFSSL_MUTEX_INITIALIZER
         if (initCacheMutex_256 == 0) {
             wc_InitMutex(&sp_cache_256_lock);
             initCacheMutex_256 = 1;
         }
+        #endif
         if (wc_LockMutex(&sp_cache_256_lock) != 0) {
             err = BAD_MUTEX_E;
         }
@@ -4084,10 +4092,8 @@ int sp_ecc_mulmod_sm2_256(const mp_int* km, const ecc_point* gm, ecc_point* r,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (k != NULL)
-        XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    if (point != NULL)
-        XFREE(point, heap, DYNAMIC_TYPE_ECC);
+    XFREE(k, heap, DYNAMIC_TYPE_ECC);
+    XFREE(point, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -4164,10 +4170,8 @@ int sp_ecc_mulmod_add_sm2_256(const mp_int* km, const ecc_point* gm,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (k != NULL)
-        XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    if (point != NULL)
-        XFREE(point, heap, DYNAMIC_TYPE_ECC);
+    XFREE(k, heap, DYNAMIC_TYPE_ECC);
+    XFREE(point, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -5877,7 +5881,7 @@ static void sp_256_ecc_recode_7_4(const sp_digit* k, ecc_recode_256* v)
     n = k[j];
     o = 0;
     for (i=0; i<37; i++) {
-        y = (int8_t)n;
+        y = (uint8_t)(int8_t)n;
         if (o + 7 < 64) {
             y &= 0x7f;
             n >>= 7;
@@ -5910,7 +5914,7 @@ static void sp_256_ecc_recode_7_4(const sp_digit* k, ecc_recode_256* v)
  * table  Table - start of the entries to access
  * idx    Index of entry to retrieve.
  */
-static void sp_256_get_entry_65_sm2_4(sp_point_256* r,
+SP_NOINLINE static void sp_256_get_entry_65_sm2_4(sp_point_256* r,
     const sp_table_entry_256* table, int idx)
 {
     __asm__ __volatile__ (
@@ -5954,7 +5958,7 @@ static void sp_256_get_entry_65_sm2_4(sp_point_256* r,
         "stp	x9, x10, [%[r], #80]\n\t"
        : [table] "+r" (table)
        : [r] "r" (r), [idx] "r" (idx)
-       : "memory", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "x19", "w30"
+       : "memory", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "x19", "w30", "cc"
     );
 }
 #endif /* !WC_NO_CACHE_RESISTANT */
@@ -18021,8 +18025,7 @@ static int sp_256_ecc_mulmod_add_only_sm2_4(sp_point_256* r, const sp_point_256*
     #endif
     }
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (rt != NULL)
-        XFREE(rt, heap, DYNAMIC_TYPE_ECC);
+    XFREE(rt, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -18089,10 +18092,8 @@ int sp_ecc_mulmod_base_sm2_256(const mp_int* km, ecc_point* r, int map, void* he
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (k != NULL)
-        XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    if (point != NULL)
-        XFREE(point, heap, DYNAMIC_TYPE_ECC);
+    XFREE(k, heap, DYNAMIC_TYPE_ECC);
+    XFREE(point, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -18167,10 +18168,8 @@ int sp_ecc_mulmod_base_add_sm2_256(const mp_int* km, const ecc_point* am,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (k != NULL)
-        XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    if (point)
-        XFREE(point, heap, DYNAMIC_TYPE_ECC);
+    XFREE(k, heap, DYNAMIC_TYPE_ECC);
+    XFREE(point, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -18220,7 +18219,7 @@ static void sp_256_from_bin(sp_digit* r, int size, const byte* a, int n)
         "subs	x6, %[n], 8\n\t"
         "mov	x7, xzr\n\t"
         "blt	2f\n\t"
-        /* Put in mulitples of 8 bytes. */
+        /* Put in multiples of 8 bytes. */
         "1:\n\t"
         "ldr	x8, [x4], -8\n\t"
         "subs	x6, x6, 8\n\t"
@@ -18323,6 +18322,7 @@ static void sp_256_from_bin(sp_digit* r, int size, const byte* a, int n)
  */
 static int sp_256_ecc_gen_k_sm2_4(WC_RNG* rng, sp_digit* k)
 {
+#ifndef WC_NO_RNG
     int err;
     byte buf[32];
 
@@ -18339,6 +18339,11 @@ static int sp_256_ecc_gen_k_sm2_4(WC_RNG* rng, sp_digit* k)
     while (err == 0);
 
     return err;
+#else
+    (void)rng;
+    (void)k;
+    return NOT_COMPILED_IN;
+#endif
 }
 
 /* Makes a random EC key pair.
@@ -18417,12 +18422,9 @@ int sp_ecc_make_key_sm2_256(WC_RNG* rng, mp_int* priv, ecc_point* pub, void* hea
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (k != NULL)
-        XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    if (point != NULL) {
-        /* point is not sensitive, so no need to zeroize */
-        XFREE(point, heap, DYNAMIC_TYPE_ECC);
-    }
+    XFREE(k, heap, DYNAMIC_TYPE_ECC);
+    /* point is not sensitive, so no need to zeroize */
+    XFREE(point, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -18586,10 +18588,8 @@ int sp_ecc_secret_gen_sm2_256(const mp_int* priv, const ecc_point* pub, byte* ou
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (k != NULL)
-        XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    if (point != NULL)
-        XFREE(point, heap, DYNAMIC_TYPE_ECC);
+    XFREE(k, heap, DYNAMIC_TYPE_ECC);
+    XFREE(point, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -19729,9 +19729,6 @@ int sp_ecc_verify_sm2_256(const byte* hash, word32 hashLen, const mp_int* pX,
         /* (r - e + n*order).z'.z' mod prime == (s.G + t.Q)->x' */
         /* Load e, subtract from r. */
         sp_256_from_bin(e, 4, hash, (int)hashLen);
-        if (sp_256_cmp_sm2_4(r, e) < 0) {
-            carry = sp_256_add_sm2_4(r, r, p256_sm2_order);
-        }
         sp_256_sub_sm2_4(e, r, e);
         sp_256_norm_4(e);
         /* x' == (r - e).z'.z' mod prime */
@@ -19766,8 +19763,8 @@ int sp_ecc_verify_sm2_256(const byte* hash, word32 hashLen, const mp_int* pX,
  * b   Second number to add in Montgomery form.
  * m   Modulus (prime).
  */
-static void sp_256_mont_add_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit* b,
-        const sp_digit* m)
+SP_NOINLINE static void sp_256_mont_add_sm2_4(sp_digit* r, const sp_digit* a,
+    const sp_digit* b, const sp_digit* m)
 {
     __asm__ __volatile__ (
         "ldp   x4, x5, [%[a], 0]\n\t"
@@ -19803,7 +19800,7 @@ static void sp_256_mont_add_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
     (void)m;
 }
 
-/* Check that the x and y oridinates are a valid point on the curve.
+/* Check that the x and y ordinates are a valid point on the curve.
  *
  * point  EC point.
  * heap   Heap to use if dynamically allocating.
@@ -19852,14 +19849,13 @@ static int sp_256_ecc_is_point_sm2_4(const sp_point_256* point,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (t1 != NULL)
-        XFREE(t1, heap, DYNAMIC_TYPE_ECC);
+    XFREE(t1, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
 }
 
-/* Check that the x and y oridinates are a valid point on the curve.
+/* Check that the x and y ordinates are a valid point on the curve.
  *
  * pX  X ordinate of EC point.
  * pY  Y ordinate of EC point.
@@ -19892,8 +19888,7 @@ int sp_ecc_is_point_sm2_256(const mp_int* pX, const mp_int* pY)
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (pub != NULL)
-        XFREE(pub, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(pub, NULL, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -20001,10 +19996,8 @@ int sp_ecc_check_key_sm2_256(const mp_int* pX, const mp_int* pY,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (pub != NULL)
-        XFREE(pub, heap, DYNAMIC_TYPE_ECC);
-    if (priv != NULL)
-        XFREE(priv, heap, DYNAMIC_TYPE_ECC);
+    XFREE(pub, heap, DYNAMIC_TYPE_ECC);
+    XFREE(priv, heap, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -20083,10 +20076,8 @@ int sp_ecc_proj_add_point_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (tmp != NULL)
-        XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
-    if (p != NULL)
-        XFREE(p, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(p, NULL, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -20151,10 +20142,8 @@ int sp_ecc_proj_dbl_point_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ,
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (tmp != NULL)
-        XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
-    if (p != NULL)
-        XFREE(p, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(p, NULL, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -20215,10 +20204,8 @@ int sp_ecc_map_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ)
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (tmp != NULL)
-        XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
-    if (p != NULL)
-        XFREE(p, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(p, NULL, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
@@ -20333,8 +20320,7 @@ int sp_ecc_uncompress_sm2_256(mp_int* xm, int odd, mp_int* ym)
     }
 
 #ifdef WOLFSSL_SP_SMALL_STACK
-    if (x != NULL)
-        XFREE(x, NULL, DYNAMIC_TYPE_ECC);
+    XFREE(x, NULL, DYNAMIC_TYPE_ECC);
 #endif
 
     return err;
