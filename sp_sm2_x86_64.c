@@ -3781,8 +3781,10 @@ int sp_ecc_mulmod_sm2_256(const mp_int* km, const ecc_point* gm, ecc_point* r,
         sp_256_point_from_ecc_point_4(point, gm);
 
 #ifdef HAVE_INTEL_AVX2
-        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                IS_INTEL_AVX2(cpuid_flags)) {
             err = sp_256_ecc_mulmod_avx2_sm2_4(point, point, k, map, 1, heap);
+        }
         else
 #endif
             err = sp_256_ecc_mulmod_sm2_4(point, point, k, map, 1, heap);
@@ -3861,24 +3863,30 @@ int sp_ecc_mulmod_add_sm2_256(const mp_int* km, const ecc_point* gm,
     }
     if (err == MP_OKAY) {
 #ifdef HAVE_INTEL_AVX2
-        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                IS_INTEL_AVX2(cpuid_flags)) {
             err = sp_256_ecc_mulmod_avx2_sm2_4(point, point, k, 0, 0, heap);
+        }
         else
 #endif
             err = sp_256_ecc_mulmod_sm2_4(point, point, k, 0, 0, heap);
     }
     if (err == MP_OKAY) {
 #ifdef HAVE_INTEL_AVX2
-        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                IS_INTEL_AVX2(cpuid_flags)) {
             sp_256_proj_point_add_avx2_sm2_4(point, point, addP, tmp);
+        }
         else
 #endif
             sp_256_proj_point_add_sm2_4(point, point, addP, tmp);
 
         if (map) {
 #ifdef HAVE_INTEL_AVX2
-            if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+            if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                    IS_INTEL_AVX2(cpuid_flags)) {
                 sp_256_map_avx2_sm2_4(point, point, tmp);
+            }
             else
 #endif
                 sp_256_map_sm2_4(point, point, tmp);
@@ -16614,8 +16622,10 @@ int sp_ecc_mulmod_base_sm2_256(const mp_int* km, ecc_point* r, int map, void* he
         sp_256_from_mp(k, 4, km);
 
 #ifdef HAVE_INTEL_AVX2
-        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                IS_INTEL_AVX2(cpuid_flags)) {
             err = sp_256_ecc_mulmod_base_avx2_sm2_4(point, k, map, 1, heap);
+        }
         else
 #endif
             err = sp_256_ecc_mulmod_base_sm2_4(point, k, map, 1, heap);
@@ -16692,24 +16702,30 @@ int sp_ecc_mulmod_base_add_sm2_256(const mp_int* km, const ecc_point* am,
     }
     if (err == MP_OKAY) {
 #ifdef HAVE_INTEL_AVX2
-        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                IS_INTEL_AVX2(cpuid_flags)) {
             err = sp_256_ecc_mulmod_base_avx2_sm2_4(point, k, 0, 0, heap);
+        }
         else
 #endif
             err = sp_256_ecc_mulmod_base_sm2_4(point, k, 0, 0, heap);
     }
     if (err == MP_OKAY) {
 #ifdef HAVE_INTEL_AVX2
-        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                IS_INTEL_AVX2(cpuid_flags)) {
             sp_256_proj_point_add_avx2_sm2_4(point, point, addP, tmp);
+        }
         else
 #endif
             sp_256_proj_point_add_sm2_4(point, point, addP, tmp);
 
         if (map) {
 #ifdef HAVE_INTEL_AVX2
-            if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+            if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                    IS_INTEL_AVX2(cpuid_flags)) {
                 sp_256_map_avx2_sm2_4(point, point, tmp);
+            }
             else
 #endif
                 sp_256_map_sm2_4(point, point, tmp);
@@ -16863,8 +16879,10 @@ int sp_ecc_make_key_sm2_256(WC_RNG* rng, mp_int* priv, ecc_point* pub, void* hea
     }
     if (err == MP_OKAY) {
 #ifdef HAVE_INTEL_AVX2
-        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                IS_INTEL_AVX2(cpuid_flags)) {
             err = sp_256_ecc_mulmod_base_avx2_sm2_4(point, k, 1, 1, NULL);
+       }
         else
 #endif
             err = sp_256_ecc_mulmod_base_sm2_4(point, k, 1, 1, NULL);
@@ -16873,7 +16891,8 @@ int sp_ecc_make_key_sm2_256(WC_RNG* rng, mp_int* priv, ecc_point* pub, void* hea
 #ifdef WOLFSSL_VALIDATE_ECC_KEYGEN
     if (err == MP_OKAY) {
 #ifdef HAVE_INTEL_AVX2
-        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags)) {
+        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                IS_INTEL_AVX2(cpuid_flags)) {
             err = sp_256_ecc_mulmod_avx2_sm2_4(infinity, point, p256_sm2_order, 1, 1,
                                                                           NULL);
         }
@@ -17068,8 +17087,10 @@ int sp_ecc_secret_gen_sm2_256(const mp_int* priv, const ecc_point* pub, byte* ou
         sp_256_from_mp(k, 4, priv);
         sp_256_point_from_ecc_point_4(point, pub);
 #ifdef HAVE_INTEL_AVX2
-        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                IS_INTEL_AVX2(cpuid_flags)) {
             err = sp_256_ecc_mulmod_avx2_sm2_4(point, point, k, 1, 1, heap);
+        }
         else
 #endif
             err = sp_256_ecc_mulmod_sm2_4(point, point, k, 1, 1, heap);
@@ -18018,8 +18039,10 @@ int sp_ecc_check_key_sm2_256(const mp_int* pX, const mp_int* pY,
     if (err == MP_OKAY) {
         /* Point * order = infinity */
 #ifdef HAVE_INTEL_AVX2
-        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                IS_INTEL_AVX2(cpuid_flags)) {
             err = sp_256_ecc_mulmod_avx2_sm2_4(p, pub, p256_sm2_order, 1, 1, heap);
+        }
         else
 #endif
             err = sp_256_ecc_mulmod_sm2_4(p, pub, p256_sm2_order, 1, 1, heap);
@@ -18034,8 +18057,10 @@ int sp_ecc_check_key_sm2_256(const mp_int* pX, const mp_int* pY,
         if (err == MP_OKAY) {
             /* Base * private = point */
 #ifdef HAVE_INTEL_AVX2
-            if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+            if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                    IS_INTEL_AVX2(cpuid_flags)) {
                 err = sp_256_ecc_mulmod_base_avx2_sm2_4(p, priv, 1, 1, heap);
+            }
             else
 #endif
                 err = sp_256_ecc_mulmod_base_sm2_4(p, priv, 1, 1, heap);
@@ -18119,8 +18144,10 @@ int sp_ecc_proj_add_point_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ,
                       sp_256_iszero_4(q->y);
 
 #ifdef HAVE_INTEL_AVX2
-        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                IS_INTEL_AVX2(cpuid_flags)) {
             sp_256_proj_point_add_avx2_sm2_4(p, p, q, tmp);
+        }
         else
 #endif
             sp_256_proj_point_add_sm2_4(p, p, q, tmp);
@@ -18193,8 +18220,10 @@ int sp_ecc_proj_dbl_point_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ,
                       sp_256_iszero_4(p->y);
 
 #ifdef HAVE_INTEL_AVX2
-        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                IS_INTEL_AVX2(cpuid_flags)) {
             sp_256_proj_point_dbl_avx2_sm2_4(p, p, tmp);
+        }
         else
 #endif
             sp_256_proj_point_dbl_sm2_4(p, p, tmp);
@@ -18263,8 +18292,10 @@ int sp_ecc_map_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ)
                       sp_256_iszero_4(p->y);
 
 #ifdef HAVE_INTEL_AVX2
-        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags))
+        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                IS_INTEL_AVX2(cpuid_flags)) {
             sp_256_map_avx2_sm2_4(p, p, tmp);
+        }
         else
 #endif
             sp_256_map_sm2_4(p, p, tmp);
@@ -18391,7 +18422,8 @@ int sp_ecc_uncompress_sm2_256(mp_int* xm, int odd, mp_int* ym)
     if (err == MP_OKAY) {
         /* y = x^3 */
 #ifdef HAVE_INTEL_AVX2
-        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags)) {
+        if (IS_INTEL_BMI2(cpuid_flags) && IS_INTEL_ADX(cpuid_flags) &&
+                IS_INTEL_AVX2(cpuid_flags)) {
             sp_256_mont_sqr_avx2_sm2_4(y, x, p256_sm2_mod, p256_sm2_mp_mod);
             sp_256_mont_mul_avx2_sm2_4(y, y, x, p256_sm2_mod, p256_sm2_mp_mod);
         }
