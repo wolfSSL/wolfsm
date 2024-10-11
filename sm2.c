@@ -142,10 +142,6 @@ static int _ecc_sm2_calc_za(const byte *id, word16 idSz,
 
 
     if (err == 0) {
-        /* Initialize hash algorithm object. */
-        err = wc_HashInit_ex(hash, hashType, key->heap, 0);
-    }
-    if (err == 0) {
         /* Hash the ENTLA - length of ID of A. */
         err = wc_HashUpdate(hash, hashType, (byte*)&entla, 2);
     }
@@ -286,6 +282,7 @@ int wc_ecc_sm2_create_digest(const byte *id, word16 idSz,
 #else
     wc_HashAlg hash[1];
 #endif
+    int hash_inited = 0;
 
     /* Validate parameters. */
     if ((key == NULL) || (key->dp == NULL) || (out == NULL) || (msg == NULL) ||
@@ -311,6 +308,15 @@ int wc_ecc_sm2_create_digest(const byte *id, word16 idSz,
     }
 #endif
 
+    if (err == 0) {
+        /* Initialize hash algorithm object. */
+        err = wc_HashInit_ex(hash, hashType, key->heap, 0);
+    }
+
+    if (err == 0) {
+        hash_inited = 1;
+    }
+
     /* Calculate ZA. */
     if (err == 0) {
         err = _ecc_sm2_calc_za(id, idSz, hash, hashType, key, out);
@@ -322,7 +328,9 @@ int wc_ecc_sm2_create_digest(const byte *id, word16 idSz,
     }
 
     /* Dispose of allocated data. */
-    (void)wc_HashFree(hash, hashType);
+    if (hash_inited) {
+        (void)wc_HashFree(hash, hashType);
+    }
 #ifdef WOLFSSL_SMALL_STACK
     XFREE(hash, key->heap, DYNAMIC_TYPE_HASHES);
 #endif
