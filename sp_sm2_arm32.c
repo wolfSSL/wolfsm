@@ -356,9 +356,10 @@ static void sp_256_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit*
         "stm	%[r]!, {r3, r4, r6, r7, r8, r9, r10, r11}\n\t"
         "subs	r5, r5, #32\n\t"
         "bgt	L_sp_256_mul_sm2_8_store_%=\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "lr", "r11", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "lr",
+            "r11"
     );
 }
 
@@ -2352,9 +2353,10 @@ static void sp_256_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit*
         "stm	%[r]!, {r3, r4, r5, r6}\n\t"
         "ldm	sp!, {r3, r4, r5, r6}\n\t"
         "stm	%[r]!, {r3, r4, r5, r6}\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r11", "r12", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r11",
+            "r12"
     );
 }
 
@@ -2705,9 +2707,10 @@ static void sp_256_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit*
         "sub	%[r], %[r], #32\n\t"
         "stm	%[r], {r3, r4, r5, r6, r7, r8, r9, r10}\n\t"
         "add	sp, sp, #36\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10",
+            "r11", "r12", "lr"
     );
 }
 
@@ -2733,7 +2736,7 @@ static void sp_256_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit*
         "strd	%[r], %[a], [sp, #36]\n\t"
 #endif
         "mov	lr, %[b]\n\t"
-        "ldm	%[a], {%[r], %[a], %[b], r3}\n\t"
+        "ldm	%[a], {r0, r1, r2, r3}\n\t"
         "ldm	lr!, {r4, r5, r6}\n\t"
         "umull	r10, r11, %[r], r4\n\t"
         "umull	r12, r7, %[a], r4\n\t"
@@ -2778,7 +2781,7 @@ static void sp_256_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit*
         "umaal	r4, r6, %[b], r7\n\t"
         "sub	lr, lr, #16\n\t"
         "umaal	r5, r6, r3, r7\n\t"
-        "ldm	%[r], {%[r], %[a], %[b], r3}\n\t"
+        "ldm	%[r], {r0, r1, r2, r3}\n\t"
         "str	r6, [sp, #32]\n\t"
         "ldm	lr!, {r6}\n\t"
         "mov	r7, #0\n\t"
@@ -2836,9 +2839,10 @@ static void sp_256_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit*
         "ldm	sp, {r3, r4, r5, r6, r7, r8, r9, r10}\n\t"
         "stm	lr, {r3, r4, r5, r6, r7, r8, r9, r10}\n\t"
         "add	sp, sp, #44\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r10", "r11", "r12", "r7", "r8", "r9", "lr", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r10", "r11", "r12", "r7",
+            "r8", "r9", "lr"
     );
 }
 
@@ -2996,9 +3000,10 @@ static void sp_256_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p)
         "stm	%[r]!, {r3, r4, r6, r7, r8, r9, r10, r11}\n\t"
         "subs	r5, r5, #32\n\t"
         "bgt	L_sp_256_sqr_sm2_8_store_%=\n\t"
-        : [r] "+r" (r), [a] "+r" (a)
+        : [r] "+r" (r),  [a] "+r" (a)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "lr", "r11", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "lr",
+            "r11"
     );
 }
 
@@ -4207,9 +4212,10 @@ static void sp_256_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p)
         "stm	%[r]!, {r2, r3, r4, r8}\n\t"
         "ldm	sp!, {r2, r3, r4, r8}\n\t"
         "stm	%[r]!, {r2, r3, r4, r8}\n\t"
-        : [r] "+r" (r), [a] "+r" (a)
+        : [r] "+r" (r),  [a] "+r" (a)
         :
-        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r12", "cc"
+        : "memory", "cc", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10",
+            "r12"
     );
 }
 
@@ -4450,9 +4456,10 @@ static void sp_256_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p)
         "sub	%[r], %[r], #32\n\t"
         "stm	%[r], {r3, r4, r5, r6, r7, r8, r9, r10}\n\t"
         "add	sp, sp, #0x44\n\t"
-        : [r] "+r" (r), [a] "+r" (a)
+        : [r] "+r" (r),  [a] "+r" (a)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10",
+            "r11", "r12", "lr"
     );
 }
 
@@ -4470,7 +4477,7 @@ static void sp_256_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p)
     __asm__ __volatile__ (
         "sub	sp, sp, #32\n\t"
         "str	%[r], [sp, #28]\n\t"
-        "ldm	%[a], {%[r], %[a], r2, r3, r4, r5, r6, r7}\n\t"
+        "ldm	%[a], {r0, r1, r2, r3, r4, r5, r6, r7}\n\t"
         "umull	r9, r10, %[r], %[r]\n\t"
         "umull	r11, r12, %[r], %[a]\n\t"
         "adds	r11, r11, r11\n\t"
@@ -4557,18 +4564,19 @@ static void sp_256_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p)
         /* R[15] = r7 */
         "ldr	lr, [sp, #28]\n\t"
         "add	lr, lr, #28\n\t"
-        "stm	lr!, {%[r], r12}\n\t"
+        "stm	lr!, {r0, r12}\n\t"
         "stm	lr!, {r11}\n\t"
         "stm	lr!, {r10}\n\t"
         "stm	lr!, {r3, r4, r8, r9}\n\t"
         "stm	lr!, {r7}\n\t"
         "sub	lr, lr, #0x40\n\t"
-        "ldm	sp, {%[r], %[a], r2, r3, r4, r5, r6}\n\t"
-        "stm	lr, {%[r], %[a], r2, r3, r4, r5, r6}\n\t"
+        "ldm	sp, {r0, r1, r2, r3, r4, r5, r6}\n\t"
+        "stm	lr, {r0, r1, r2, r3, r4, r5, r6}\n\t"
         "add	sp, sp, #32\n\t"
-        : [r] "+r" (r), [a] "+r" (a)
+        : [r] "+r" (r),  [a] "+r" (a)
         :
-        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
+        : "memory", "cc", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10",
+            "r11", "r12", "lr"
     );
 }
 
@@ -4581,7 +4589,8 @@ static void sp_256_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p)
  * a  A single precision integer.
  * b  A single precision integer.
  */
-static sp_digit sp_256_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* b_p)
+static sp_digit sp_256_add_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* b_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -4605,9 +4614,10 @@ static sp_digit sp_256_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_di
         "cmp	%[a], r12\n\t"
         "bne	L_sp_256_add_sm2_8_word_%=\n\t"
         "mov	%[r], r3\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r3", "r12", "cc"
+        : "memory", "cc", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11",
+            "r3", "r12"
     );
     return (uint32_t)(size_t)r;
 }
@@ -4619,7 +4629,8 @@ static sp_digit sp_256_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_di
  * a  A single precision integer.
  * b  A single precision integer.
  */
-static sp_digit sp_256_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* b_p)
+static sp_digit sp_256_add_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* b_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -4642,9 +4653,9 @@ static sp_digit sp_256_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_di
         "stm	%[r]!, {r3, r4, r5, r6}\n\t"
         "mov	%[r], #0\n\t"
         "adc	%[r], %[r], #0\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10"
     );
     return (uint32_t)(size_t)r;
 }
@@ -4678,9 +4689,10 @@ static sp_digit sp_256_sub_in_place_sm2_8(sp_digit* a_p, const sp_digit* b_p)
         "cmp	%[a], lr\n\t"
         "bne	L_sp_256_sub_in_pkace_sm2_8_word_%=\n\t"
         "mov	%[a], r12\n\t"
-        : [a] "+r" (a), [b] "+r" (b)
+        : [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r12", "lr", "cc"
+        : "memory", "cc", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r12",
+            "lr"
     );
     return (uint32_t)(size_t)a;
 }
@@ -4712,9 +4724,9 @@ static sp_digit sp_256_sub_in_place_sm2_8(sp_digit* a_p, const sp_digit* b_p)
         "sbcs	r5, r5, r9\n\t"
         "stm	%[a]!, {r2, r3, r4, r5}\n\t"
         "sbc	%[a], r9, r9\n\t"
-        : [a] "+r" (a), [b] "+r" (b)
+        : [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "cc"
+        : "memory", "cc", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9"
     );
     return (uint32_t)(size_t)a;
 }
@@ -4729,7 +4741,8 @@ static sp_digit sp_256_sub_in_place_sm2_8(sp_digit* a_p, const sp_digit* b_p)
  * b  A single precision number to subtract.
  * m  Mask value to apply.
  */
-static sp_digit sp_256_cond_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* b_p, sp_digit m_p)
+static sp_digit sp_256_cond_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* b_p, sp_digit m_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -4753,9 +4766,9 @@ static sp_digit sp_256_cond_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const 
         "cmp	lr, #32\n\t"
         "blt	L_sp_256_cond_sub_sm2_8_words_%=\n\t"
         "mov	%[r], r12\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b), [m] "+r" (m)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b),  [m] "+r" (m)
         :
-        : "memory", "r12", "lr", "r4", "r5", "r6", "cc"
+        : "memory", "cc", "r12", "lr", "r4", "r5", "r6"
     );
     return (uint32_t)(size_t)r;
 }
@@ -4769,7 +4782,8 @@ static sp_digit sp_256_cond_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const 
  * b  A single precision number to subtract.
  * m  Mask value to apply.
  */
-static sp_digit sp_256_cond_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* b_p, sp_digit m_p)
+static sp_digit sp_256_cond_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* b_p, sp_digit m_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -4807,9 +4821,9 @@ static sp_digit sp_256_cond_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const 
         "sbcs	r5, r5, r7\n\t"
         "stm	%[r]!, {r4, r5}\n\t"
         "sbc	%[r], lr, lr\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b), [m] "+r" (m)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b),  [m] "+r" (m)
         :
-        : "memory", "r12", "lr", "r4", "r5", "r6", "r7", "cc"
+        : "memory", "cc", "r12", "lr", "r4", "r5", "r6", "r7"
     );
     return (uint32_t)(size_t)r;
 }
@@ -4907,9 +4921,9 @@ static void sp_256_mul_d_sm2_8(sp_digit* r_p, const sp_digit* a_p, sp_digit b_p)
         "cmp	r9, #32\n\t"
         "blt	L_sp_256_mul_d_sm2_8_word_%=\n\t"
         "str	r3, [%[r], #32]\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "r8", "r9"
     );
 }
 
@@ -5180,9 +5194,9 @@ static void sp_256_mul_d_sm2_8(sp_digit* r_p, const sp_digit* a_p, sp_digit b_p)
 #endif
         "stm	%[r]!, {r4}\n\t"
         "str	r5, [%[r]]\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "r8"
     );
 }
 
@@ -5239,9 +5253,9 @@ static sp_digit div_256_word_8(sp_digit d1_p, sp_digit d0_p, sp_digit div_p)
         "sub	%[d0], %[d0], r3\n\t"
         "udiv	r3, %[d0], %[div]\n\t"
         "add	%[d1], r4, r3\n\t"
-        : [d1] "+r" (d1), [d0] "+r" (d0), [div] "+r" (div)
+        : [d1] "+r" (d1),  [d0] "+r" (d0),  [div] "+r" (div)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "cc"
+        : "memory", "cc", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8"
     );
     return (uint32_t)(size_t)d1;
 }
@@ -5377,9 +5391,9 @@ static sp_digit div_256_word_8(sp_digit d1_p, sp_digit d0_p, sp_digit div_p)
         "subs	r6, %[div], r7\n\t"
         "sbc	r6, r6, r6\n\t"
         "sub	%[d1], r3, r6\n\t"
-        : [d1] "+r" (d1), [d0] "+r" (d0), [div] "+r" (div)
+        : [d1] "+r" (d1),  [d0] "+r" (d0),  [div] "+r" (div)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "cc"
+        : "memory", "cc", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8"
     );
     return (uint32_t)(size_t)d1;
 }
@@ -5538,9 +5552,9 @@ static sp_int32 sp_256_cmp_sm2_8(const sp_digit* a_p, const sp_digit* b_p)
         "eor	r2, r2, r3\n\t"
 #endif /*WOLFSSL_SP_SMALL */
         "mov	%[a], r2\n\t"
-        : [a] "+r" (a), [b] "+r" (b)
+        : [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r2", "r3", "r12", "lr", "r4", "r5", "r6", "cc"
+        : "memory", "cc", "r2", "r3", "r12", "lr", "r4", "r5", "r6"
     );
     return (uint32_t)(size_t)a;
 }
@@ -5820,7 +5834,8 @@ static int sp_256_point_to_ecc_point_8(const sp_point_256* p, ecc_point* pm)
  * m   Modulus (prime).
  * mp  Montgomery multiplier.
  */
-static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* b_p, const sp_digit* m_p, sp_digit mp_p)
+static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* b_p, const sp_digit* m_p, sp_digit mp_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -7952,9 +7967,10 @@ static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p
         "ldr	%[r], [sp, #64]\n\t"
         "stm	%[r], {r1, r2, r3, r4, r5, r6, r7, r8}\n\t"
         "add	sp, sp, #0x44\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "lr", "r12", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "lr",
+            "r12"
     );
     (void)m_p;
     (void)mp_p;
@@ -7970,7 +7986,8 @@ static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p
  * m   Modulus (prime).
  * mp  Montgomery multiplier.
  */
-static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* b_p, const sp_digit* m_p, sp_digit mp_p)
+static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* b_p, const sp_digit* m_p, sp_digit mp_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -8459,9 +8476,10 @@ static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p
         "ldr	%[r], [sp, #64]\n\t"
         "stm	%[r], {r1, r2, r3, r4, r5, r6, r7, r8}\n\t"
         "add	sp, sp, #0x44\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10",
+            "r11", "r12", "lr"
     );
     (void)m_p;
     (void)mp_p;
@@ -8477,7 +8495,8 @@ static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p
  * m   Modulus (prime).
  * mp  Montgomery multiplier.
  */
-static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* b_p, const sp_digit* m_p, sp_digit mp_p)
+static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* b_p, const sp_digit* m_p, sp_digit mp_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -8492,7 +8511,7 @@ static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p
         "strd	%[r], %[a], [sp, #68]\n\t"
 #endif
         "mov	lr, %[b]\n\t"
-        "ldm	%[a], {%[r], %[a], %[b], r3}\n\t"
+        "ldm	%[a], {r0, r1, r2, r3}\n\t"
         "ldm	lr!, {r4, r5, r6}\n\t"
         "umull	r10, r11, %[r], r4\n\t"
         "umull	r12, r7, %[a], r4\n\t"
@@ -8537,7 +8556,7 @@ static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p
         "umaal	r4, r6, %[b], r7\n\t"
         "sub	lr, lr, #16\n\t"
         "umaal	r5, r6, r3, r7\n\t"
-        "ldm	%[r], {%[r], %[a], %[b], r3}\n\t"
+        "ldm	%[r], {r0, r1, r2, r3}\n\t"
         "str	r6, [sp, #64]\n\t"
         "ldm	lr!, {r6}\n\t"
         "mov	r7, #0\n\t"
@@ -8744,9 +8763,10 @@ static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p
         "ldr	%[r], [sp, #68]\n\t"
         "stm	%[r], {r1, r2, r3, r4, r5, r6, r7, r8}\n\t"
         "add	sp, sp, #0x4c\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r10", "r11", "r12", "r7", "r8", "r9", "lr", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r10", "r11", "r12", "r7",
+            "r8", "r9", "lr"
     );
     (void)m_p;
     (void)mp_p;
@@ -8761,7 +8781,8 @@ static SP_NOINLINE void sp_256_mont_mul_sm2_8(sp_digit* r_p, const sp_digit* a_p
  * m   Modulus (prime).
  * mp  Montgomery multiplier.
  */
-static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* m_p, sp_digit mp_p)
+static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* m_p, sp_digit mp_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -9972,9 +9993,10 @@ static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p
         "ldr	%[r], [sp, #64]\n\t"
         "stm	%[r], {r1, r2, r3, r4, r5, r6, r7, r8}\n\t"
         "add	sp, sp, #0x44\n\t"
-        : [r] "+r" (r), [a] "+r" (a)
+        : [r] "+r" (r),  [a] "+r" (a)
         :
-        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r12", "r8", "r9", "r10", "lr", "cc"
+        : "memory", "cc", "r2", "r3", "r4", "r5", "r6", "r7", "r12", "r8", "r9",
+            "r10", "lr"
     );
     (void)m_p;
     (void)mp_p;
@@ -9988,7 +10010,8 @@ static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p
  * m   Modulus (prime).
  * mp  Montgomery multiplier.
  */
-static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* m_p, sp_digit mp_p)
+static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* m_p, sp_digit mp_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -10368,9 +10391,10 @@ static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p
         "ldr	%[r], [sp, #64]\n\t"
         "stm	%[r], {r1, r2, r3, r4, r5, r6, r7, r8}\n\t"
         "add	sp, sp, #0x44\n\t"
-        : [r] "+r" (r), [a] "+r" (a)
+        : [r] "+r" (r),  [a] "+r" (a)
         :
-        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
+        : "memory", "cc", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10",
+            "r11", "r12", "lr"
     );
     (void)m_p;
     (void)mp_p;
@@ -10384,7 +10408,8 @@ static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p
  * m   Modulus (prime).
  * mp  Montgomery multiplier.
  */
-static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* m_p, sp_digit mp_p)
+static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* m_p, sp_digit mp_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -10392,7 +10417,7 @@ static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p
     __asm__ __volatile__ (
         "sub	sp, sp, #0x44\n\t"
         "str	%[r], [sp, #64]\n\t"
-        "ldm	%[a], {%[r], %[a], r2, r3, r4, r5, r6, r7}\n\t"
+        "ldm	%[a], {r0, r1, r2, r3, r4, r5, r6, r7}\n\t"
         "umull	r9, r10, %[r], %[r]\n\t"
         "umull	r11, r12, %[r], %[a]\n\t"
         "adds	r11, r11, r11\n\t"
@@ -10479,7 +10504,7 @@ static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p
         /* R[15] = r7 */
         "mov	lr, sp\n\t"
         "add	lr, lr, #28\n\t"
-        "stm	lr!, {%[r], r12}\n\t"
+        "stm	lr!, {r0, r12}\n\t"
         "stm	lr!, {r11}\n\t"
         "stm	lr!, {r10}\n\t"
         "stm	lr!, {r3, r4, r8, r9}\n\t"
@@ -10638,9 +10663,10 @@ static SP_NOINLINE void sp_256_mont_sqr_sm2_8(sp_digit* r_p, const sp_digit* a_p
         "ldr	%[r], [sp, #64]\n\t"
         "stm	%[r], {r1, r2, r3, r4, r5, r6, r7, r8}\n\t"
         "add	sp, sp, #0x44\n\t"
-        : [r] "+r" (r), [a] "+r" (a)
+        : [r] "+r" (r),  [a] "+r" (a)
         :
-        : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
+        : "memory", "cc", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10",
+            "r11", "r12", "lr"
     );
     (void)m_p;
     (void)mp_p;
@@ -11042,9 +11068,10 @@ static SP_NOINLINE void sp_256_mont_reduce_sm2_8(sp_digit* a_p, const sp_digit* 
         "str	r12, [%[a]]\n\t"
         "str	lr, [%[a], #4]\n\t"
         "mov	%[mp], r3\n\t"
-        : [a] "+r" (a), [m] "+r" (m), [mp] "+r" (mp)
+        : [a] "+r" (a),  [m] "+r" (m),  [mp] "+r" (mp)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "cc"
+        : "memory", "cc", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9",
+            "r10", "r11"
     );
     sp_256_cond_sub_sm2_8(a - 8, a, m, (sp_digit)0 - mp);
 }
@@ -11145,9 +11172,10 @@ static SP_NOINLINE void sp_256_mont_reduce_sm2_8(sp_digit* a_p, const sp_digit* 
         "str	r12, [%[a]]\n\t"
         "str	lr, [%[a], #4]\n\t"
         "mov	%[mp], r3\n\t"
-        : [a] "+r" (a), [m] "+r" (m), [mp] "+r" (mp)
+        : [a] "+r" (a),  [m] "+r" (m),  [mp] "+r" (mp)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "cc"
+        : "memory", "cc", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9",
+            "r10", "r11"
     );
     sp_256_cond_sub_sm2_8(a - 8, a, m, (sp_digit)0 - mp);
 }
@@ -11230,9 +11258,10 @@ static SP_NOINLINE void sp_256_mont_reduce_sm2_8(sp_digit* a_p, const sp_digit* 
         "str	r7, [%[a], #12]\n\t"
         "str	r8, [%[a], #16]\n\t"
         "mov	%[mp], lr\n\t"
-        : [a] "+r" (a), [m] "+r" (m), [mp] "+r" (mp)
+        : [a] "+r" (a),  [m] "+r" (m),  [mp] "+r" (mp)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "cc"
+        : "memory", "cc", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9",
+            "r10", "r11"
     );
     sp_256_cond_sub_sm2_8(a - 8, a, m, (sp_digit)0 - mp);
 }
@@ -11413,7 +11442,8 @@ static SP_NOINLINE void sp_256_mont_reduce_sm2_8(sp_digit* a_p, const sp_digit* 
         "add	sp, sp, #0x44\n\t"
         : [a] "+r" (a)
         :
-        : "memory", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
+        : "memory", "cc", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9",
+            "r10", "r11", "r12", "lr"
     );
     (void)m_p;
     (void)mp_p;
@@ -11426,7 +11456,8 @@ static SP_NOINLINE void sp_256_mont_reduce_sm2_8(sp_digit* a_p, const sp_digit* 
  * m   The single precision number representing the modulus.
  * mp  The digit representing the negative inverse of m mod 2^n.
  */
-static SP_NOINLINE void sp_256_mont_reduce_order_sm2_8(sp_digit* a_p, const sp_digit* m_p, sp_digit mp_p)
+static SP_NOINLINE void sp_256_mont_reduce_order_sm2_8(sp_digit* a_p, const sp_digit* m_p,
+    sp_digit mp_p)
 {
     register sp_digit* a asm ("r0") = (sp_digit*)a_p;
     register const sp_digit* m asm ("r1") = (const sp_digit*)m_p;
@@ -11696,9 +11727,10 @@ static SP_NOINLINE void sp_256_mont_reduce_order_sm2_8(sp_digit* a_p, const sp_d
         "str	r12, [%[a]]\n\t"
         "str	lr, [%[a], #4]\n\t"
         "mov	%[mp], r3\n\t"
-        : [a] "+r" (a), [m] "+r" (m), [mp] "+r" (mp)
+        : [a] "+r" (a),  [m] "+r" (m),  [mp] "+r" (mp)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "cc"
+        : "memory", "cc", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9",
+            "r10", "r11"
     );
     sp_256_cond_sub_sm2_8(a - 8, a, m, (sp_digit)0 - mp);
 }
@@ -11710,7 +11742,8 @@ static SP_NOINLINE void sp_256_mont_reduce_order_sm2_8(sp_digit* a_p, const sp_d
  * m   The single precision number representing the modulus.
  * mp  The digit representing the negative inverse of m mod 2^n.
  */
-static SP_NOINLINE void sp_256_mont_reduce_order_sm2_8(sp_digit* a_p, const sp_digit* m_p, sp_digit mp_p)
+static SP_NOINLINE void sp_256_mont_reduce_order_sm2_8(sp_digit* a_p, const sp_digit* m_p,
+    sp_digit mp_p)
 {
     register sp_digit* a asm ("r0") = (sp_digit*)a_p;
     register const sp_digit* m asm ("r1") = (const sp_digit*)m_p;
@@ -11799,9 +11832,10 @@ static SP_NOINLINE void sp_256_mont_reduce_order_sm2_8(sp_digit* a_p, const sp_d
         "str	r12, [%[a]]\n\t"
         "str	lr, [%[a], #4]\n\t"
         "mov	%[mp], r3\n\t"
-        : [a] "+r" (a), [m] "+r" (m), [mp] "+r" (mp)
+        : [a] "+r" (a),  [m] "+r" (m),  [mp] "+r" (mp)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "cc"
+        : "memory", "cc", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9",
+            "r10", "r11"
     );
     sp_256_cond_sub_sm2_8(a - 8, a, m, (sp_digit)0 - mp);
 }
@@ -11813,7 +11847,8 @@ static SP_NOINLINE void sp_256_mont_reduce_order_sm2_8(sp_digit* a_p, const sp_d
  * m   The single precision number representing the modulus.
  * mp  The digit representing the negative inverse of m mod 2^n.
  */
-static SP_NOINLINE void sp_256_mont_reduce_order_sm2_8(sp_digit* a_p, const sp_digit* m_p, sp_digit mp_p)
+static SP_NOINLINE void sp_256_mont_reduce_order_sm2_8(sp_digit* a_p, const sp_digit* m_p,
+    sp_digit mp_p)
 {
     register sp_digit* a asm ("r0") = (sp_digit*)a_p;
     register const sp_digit* m asm ("r1") = (const sp_digit*)m_p;
@@ -11884,9 +11919,10 @@ static SP_NOINLINE void sp_256_mont_reduce_order_sm2_8(sp_digit* a_p, const sp_d
         "str	r7, [%[a], #12]\n\t"
         "str	r8, [%[a], #16]\n\t"
         "mov	%[mp], lr\n\t"
-        : [a] "+r" (a), [m] "+r" (m), [mp] "+r" (mp)
+        : [a] "+r" (a),  [m] "+r" (m),  [mp] "+r" (mp)
         :
-        : "memory", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "cc"
+        : "memory", "cc", "r3", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "r9",
+            "r10", "r11"
     );
     sp_256_cond_sub_sm2_8(a - 8, a, m, (sp_digit)0 - mp);
 }
@@ -11940,7 +11976,8 @@ static void sp_256_map_sm2_8(sp_point_256* r, const sp_point_256* p,
  * b   Second number to add in Montgomery form.
  * m   Modulus (prime).
  */
-static void sp_256_mont_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* b_p, const sp_digit* m_p)
+static void sp_256_mont_add_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* b_p, const sp_digit* m_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -11982,9 +12019,10 @@ static void sp_256_mont_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_d
         "sbcs	r11, r11, lr\n\t"
         "sbc	r12, r12, lr, lsl #1\n\t"
         "stm	%[r], {r5, r6, r7, r8, r9, r10, r11, r12}\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10",
+            "r11", "r12", "lr"
     );
     (void)m_p;
 }
@@ -11995,7 +12033,8 @@ static void sp_256_mont_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_d
  * a   Number to double in Montgomery form.
  * m   Modulus (prime).
  */
-static void sp_256_mont_dbl_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* m_p)
+static void sp_256_mont_dbl_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* m_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -12032,9 +12071,10 @@ static void sp_256_mont_dbl_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_d
         "sbcs	r10, r10, r2\n\t"
         "sbc	r11, r11, r2, lsl #1\n\t"
         "stm	%[r], {r4, r5, r6, r7, r8, r9, r10, r11}\n\t"
-        : [r] "+r" (r), [a] "+r" (a)
+        : [r] "+r" (r),  [a] "+r" (a)
         :
-        : "memory", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r2", "cc"
+        : "memory", "cc", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11",
+            "r2"
     );
     (void)m_p;
 }
@@ -12045,7 +12085,8 @@ static void sp_256_mont_dbl_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_d
  * a   Number to triple in Montgomery form.
  * m   Modulus (prime).
  */
-static void sp_256_mont_tpl_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* m_p)
+static void sp_256_mont_tpl_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* m_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -12114,9 +12155,10 @@ static void sp_256_mont_tpl_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_d
         "sbcs	r10, r10, r12\n\t"
         "sbc	r11, r11, r12, lsl #1\n\t"
         "stm	%[r], {r4, r5, r6, r7, r8, r9, r10, r11}\n\t"
-        : [r] "+r" (r), [a] "+r" (a)
+        : [r] "+r" (r),  [a] "+r" (a)
         :
-        : "memory", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r2", "r3", "r12", "cc"
+        : "memory", "cc", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11",
+            "r2", "r3", "r12"
     );
     (void)m_p;
 }
@@ -12128,7 +12170,8 @@ static void sp_256_mont_tpl_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_d
  * b   Number to subtract with in Montgomery form.
  * m   Modulus (prime).
  */
-static void sp_256_mont_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* b_p, const sp_digit* m_p)
+static void sp_256_mont_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* b_p, const sp_digit* m_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -12168,9 +12211,10 @@ static void sp_256_mont_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_d
         "adcs	r11, r11, lr\n\t"
         "adc	r12, r12, lr, lsl #1\n\t"
         "stm	%[r], {r5, r6, r7, r8, r9, r10, r11, r12}\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "lr", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10",
+            "r11", "r12", "lr"
     );
     (void)m_p;
 }
@@ -12181,7 +12225,8 @@ static void sp_256_mont_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_d
  * a  Number to divide.
  * m  Modulus (prime).
  */
-static void sp_256_mont_div2_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* m_p)
+static void sp_256_mont_div2_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* m_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -12245,9 +12290,10 @@ static void sp_256_mont_div2_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_
         "orr	r10, r10, r7, lsl #31\n\t"
         "orr	r11, r11, r3, lsl #31\n\t"
         "stm	%[r], {r8, r9, r10, r11}\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [m] "+r" (m)
+        : [r] "+r" (r),  [a] "+r" (a),  [m] "+r" (m)
         :
-        : "memory", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r3", "cc"
+        : "memory", "cc", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11",
+            "r3"
     );
 }
 
@@ -15772,7 +15818,7 @@ static void sp_256_add_one_sm2_8(sp_digit* a_p)
         "stm	%[a]!, {r1, r2, r3, r4}\n\t"
         : [a] "+r" (a)
         :
-        : "memory", "r1", "r2", "r3", "r4", "cc"
+        : "memory", "cc", "r1", "r2", "r3", "r4"
     );
 }
 
@@ -16149,7 +16195,8 @@ int sp_ecc_secret_gen_256_nb(sp_ecc_ctx_t* sp_ctx, const mp_int* priv,
  * a  A single precision integer.
  * b  A single precision integer.
  */
-static sp_digit sp_256_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* b_p)
+static sp_digit sp_256_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* b_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -16172,9 +16219,10 @@ static sp_digit sp_256_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_di
         "cmp	%[a], lr\n\t"
         "bne	L_sp_256_sub_sm2_8_word_%=\n\t"
         "mov	%[r], r12\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r12", "lr", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10",
+            "r12", "lr"
     );
     return (uint32_t)(size_t)r;
 }
@@ -16186,7 +16234,8 @@ static sp_digit sp_256_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_di
  * a  A single precision integer.
  * b  A single precision integer.
  */
-static sp_digit sp_256_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* b_p)
+static sp_digit sp_256_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* b_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -16208,9 +16257,9 @@ static sp_digit sp_256_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_di
         "sbcs	r6, r6, r10\n\t"
         "stm	%[r]!, {r3, r4, r5, r6}\n\t"
         "sbc	%[r], r6, r6\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b)
         :
-        : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "cc"
+        : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10"
     );
     return (uint32_t)(size_t)r;
 }
@@ -16228,7 +16277,8 @@ static sp_digit sp_256_sub_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_di
  * b  A single precision number to add.
  * m  Mask value to apply.
  */
-static sp_digit sp_256_cond_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* b_p, sp_digit m_p)
+static sp_digit sp_256_cond_add_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* b_p, sp_digit m_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -16252,9 +16302,9 @@ static sp_digit sp_256_cond_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const 
         "cmp	r12, #32\n\t"
         "blt	L_sp_256_cond_add_sm2_8_words_%=\n\t"
         "mov	%[r], lr\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b), [m] "+r" (m)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b),  [m] "+r" (m)
         :
-        : "memory", "r12", "lr", "r4", "r5", "r6", "cc"
+        : "memory", "cc", "r12", "lr", "r4", "r5", "r6"
     );
     return (uint32_t)(size_t)r;
 }
@@ -16268,7 +16318,8 @@ static sp_digit sp_256_cond_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const 
  * b  A single precision number to add.
  * m  Mask value to apply.
  */
-static sp_digit sp_256_cond_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const sp_digit* b_p, sp_digit m_p)
+static sp_digit sp_256_cond_add_sm2_8(sp_digit* r_p, const sp_digit* a_p,
+    const sp_digit* b_p, sp_digit m_p)
 {
     register sp_digit* r asm ("r0") = (sp_digit*)r_p;
     register const sp_digit* a asm ("r1") = (const sp_digit*)a_p;
@@ -16306,9 +16357,9 @@ static sp_digit sp_256_cond_add_sm2_8(sp_digit* r_p, const sp_digit* a_p, const 
         "adcs	r5, r5, r7\n\t"
         "stm	%[r]!, {r4, r5}\n\t"
         "adc	%[r], r8, r8\n\t"
-        : [r] "+r" (r), [a] "+r" (a), [b] "+r" (b), [m] "+r" (m)
+        : [r] "+r" (r),  [a] "+r" (a),  [b] "+r" (b),  [m] "+r" (m)
         :
-        : "memory", "r12", "lr", "r4", "r5", "r6", "r7", "r8", "cc"
+        : "memory", "cc", "r12", "lr", "r4", "r5", "r6", "r7", "r8"
     );
     return (uint32_t)(size_t)r;
 }
