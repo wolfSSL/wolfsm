@@ -76,8 +76,8 @@ WOLFSSL_API int wc_Sm3Update(wc_Sm3* sm3, const byte* data, word32 len);
 WOLFSSL_API int wc_Sm3FinalRaw(wc_Sm3* sm3, byte* hash);
 WOLFSSL_API int wc_Sm3Final(wc_Sm3* sm3, byte* hash);
 WOLFSSL_API void wc_Sm3Free(wc_Sm3* sm3);
-WOLFSSL_API int wc_Sm3GetHash(wc_Sm3* sm3, byte* hash);
 WOLFSSL_API int wc_Sm3Copy(const wc_Sm3* src, wc_Sm3* dst);
+WOLFSSL_API int wc_Sm3GetHash(wc_Sm3* sm3, byte* hash);
 
 #ifdef WOLFSSL_HASH_FLAGS
 WOLFSSL_API int wc_Sm3SetFlags(wc_Sm3* sm3, word32 flags);
