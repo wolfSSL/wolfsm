@@ -1286,7 +1286,7 @@ int wc_Sm3SetFlags(wc_Sm3* sm3, word32 flags)
  */
 int wc_Sm3GetFlags(const wc_Sm3* sm3, word32* flags)
 {
-    if (sm3 != NULL) {
+    if ((sm3 != NULL) && (flags != NULL)) {
         *flags = sm3->flags;
     }
     return 0;
