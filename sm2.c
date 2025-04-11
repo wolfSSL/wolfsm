@@ -23,17 +23,12 @@
  *   https://datatracker.ietf.org/doc/html/draft-shen-sm2-ecdsa-02
  */
 
-#ifdef HAVE_CONFIG_H
-    #include <config.h>
-#endif
-
-#include <wolfssl/wolfcrypt/settings.h>
+#include <wolfssl/wolfcrypt/libwolfssl_sources.h>
 
 #if defined(WOLFSSL_SM2) && defined(HAVE_ECC)
 
 #include <wolfssl/wolfcrypt/sm2.h>
 #include <wolfssl/wolfcrypt/sp.h>
-#include <wolfssl/wolfcrypt/error-crypt.h>
 #include <wolfssl/wolfcrypt/hash.h>
 #include <wolfssl/wolfcrypt/coding.h>
 #include <wolfssl/wolfcrypt/asn.h>

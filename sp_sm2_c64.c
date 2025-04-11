@@ -1,6 +1,6 @@
 /* sp.c
  *
- * Copyright (C) 2006-2024 wolfSSL Inc.
+ * Copyright (C) 2006-2025 wolfSSL Inc.
  *
  * This file is part of wolfSSL.
  *
@@ -21,16 +21,11 @@
 
 /* Implementation by Sean Parkinson. */
 
-#ifdef HAVE_CONFIG_H
-    #include <config.h>
-#endif
-
-#include <wolfssl/wolfcrypt/settings.h>
+#include <wolfssl/wolfcrypt/libwolfssl_sources.h>
 
 #if defined(WOLFSSL_HAVE_SP_RSA) || defined(WOLFSSL_HAVE_SP_DH) || \
     defined(WOLFSSL_HAVE_SP_ECC)
 
-#include <wolfssl/wolfcrypt/error-crypt.h>
 #include <wolfssl/wolfcrypt/cpuid.h>
 #ifdef NO_INLINE
     #include <wolfssl/wolfcrypt/misc.h>
@@ -255,16 +250,16 @@ SP_NOINLINE static void sp_256_mul_sm2_5(sp_digit* r, const sp_digit* a,
                  + ((sp_int128)a[ 4]) * b[ 3];
     sp_int128 t8   = ((sp_int128)a[ 4]) * b[ 4];
 
-    t1   += t0  >> 52; r[ 0] = t0  & 0xfffffffffffffL;
-    t2   += t1  >> 52; r[ 1] = t1  & 0xfffffffffffffL;
-    t3   += t2  >> 52; r[ 2] = t2  & 0xfffffffffffffL;
-    t4   += t3  >> 52; r[ 3] = t3  & 0xfffffffffffffL;
-    t5   += t4  >> 52; r[ 4] = t4  & 0xfffffffffffffL;
-    t6   += t5  >> 52; r[ 5] = t5  & 0xfffffffffffffL;
-    t7   += t6  >> 52; r[ 6] = t6  & 0xfffffffffffffL;
-    t8   += t7  >> 52; r[ 7] = t7  & 0xfffffffffffffL;
+    t1   += t0  >> 52; r[ 0] = (sp_digit)(t0  & 0xfffffffffffffL);
+    t2   += t1  >> 52; r[ 1] = (sp_digit)(t1  & 0xfffffffffffffL);
+    t3   += t2  >> 52; r[ 2] = (sp_digit)(t2  & 0xfffffffffffffL);
+    t4   += t3  >> 52; r[ 3] = (sp_digit)(t3  & 0xfffffffffffffL);
+    t5   += t4  >> 52; r[ 4] = (sp_digit)(t4  & 0xfffffffffffffL);
+    t6   += t5  >> 52; r[ 5] = (sp_digit)(t5  & 0xfffffffffffffL);
+    t7   += t6  >> 52; r[ 6] = (sp_digit)(t6  & 0xfffffffffffffL);
+    t8   += t7  >> 52; r[ 7] = (sp_digit)(t7  & 0xfffffffffffffL);
     r[9] = (sp_digit)(t8 >> 52);
-                       r[8] = t8 & 0xfffffffffffffL;
+                       r[8] = (sp_digit)(t8 & 0xfffffffffffffL);
 }
 
 #endif /* WOLFSSL_SP_SMALL */
@@ -334,16 +329,16 @@ SP_NOINLINE static void sp_256_sqr_sm2_5(sp_digit* r, const sp_digit* a)
     sp_int128 t7   = (((sp_int128)a[ 3]) * a[ 4]) * 2;
     sp_int128 t8   =  ((sp_int128)a[ 4]) * a[ 4];
 
-    t1   += t0  >> 52; r[ 0] = t0  & 0xfffffffffffffL;
-    t2   += t1  >> 52; r[ 1] = t1  & 0xfffffffffffffL;
-    t3   += t2  >> 52; r[ 2] = t2  & 0xfffffffffffffL;
-    t4   += t3  >> 52; r[ 3] = t3  & 0xfffffffffffffL;
-    t5   += t4  >> 52; r[ 4] = t4  & 0xfffffffffffffL;
-    t6   += t5  >> 52; r[ 5] = t5  & 0xfffffffffffffL;
-    t7   += t6  >> 52; r[ 6] = t6  & 0xfffffffffffffL;
-    t8   += t7  >> 52; r[ 7] = t7  & 0xfffffffffffffL;
+    t1   += t0  >> 52; r[ 0] = (sp_digit)(t0  & 0xfffffffffffffL);
+    t2   += t1  >> 52; r[ 1] = (sp_digit)(t1  & 0xfffffffffffffL);
+    t3   += t2  >> 52; r[ 2] = (sp_digit)(t2  & 0xfffffffffffffL);
+    t4   += t3  >> 52; r[ 3] = (sp_digit)(t3  & 0xfffffffffffffL);
+    t5   += t4  >> 52; r[ 4] = (sp_digit)(t4  & 0xfffffffffffffL);
+    t6   += t5  >> 52; r[ 5] = (sp_digit)(t5  & 0xfffffffffffffL);
+    t7   += t6  >> 52; r[ 6] = (sp_digit)(t6  & 0xfffffffffffffL);
+    t8   += t7  >> 52; r[ 7] = (sp_digit)(t7  & 0xfffffffffffffL);
     r[9] = (sp_digit)(t8 >> 52);
-                       r[8] = t8 & 0xfffffffffffffL;
+                       r[8] = (sp_digit)(t8 & 0xfffffffffffffL);
 }
 
 #endif /* WOLFSSL_SP_SMALL */
@@ -694,17 +689,17 @@ SP_NOINLINE static void sp_256_mul_add_sm2_5(sp_digit* r, const sp_digit* a,
         t[1]  = (tb * a[i+1]) + r[i+1];
         t[2]  = (tb * a[i+2]) + r[i+2];
         t[3]  = (tb * a[i+3]) + r[i+3];
-        r[i+0] = t[0] & 0xfffffffffffffL;
+        r[i+0] = (sp_digit)(t[0] & 0xfffffffffffffL);
         t[1] += t[0] >> 52;
-        r[i+1] = t[1] & 0xfffffffffffffL;
+        r[i+1] = (sp_digit)(t[1] & 0xfffffffffffffL);
         t[2] += t[1] >> 52;
-        r[i+2] = t[2] & 0xfffffffffffffL;
+        r[i+2] = (sp_digit)(t[2] & 0xfffffffffffffL);
         t[3] += t[2] >> 52;
-        r[i+3] = t[3] & 0xfffffffffffffL;
+        r[i+3] = (sp_digit)(t[3] & 0xfffffffffffffL);
         t[0]  = t[3] >> 52;
     }
     t[0] += (tb * a[4]) + r[4];
-    r[4] = t[0] & 0xfffffffffffffL;
+    r[4] = (sp_digit)(t[0] & 0xfffffffffffffL);
     r[5] +=  (sp_digit)(t[0] >> 52);
 #else
     sp_int128 tb = b;
@@ -758,7 +753,7 @@ static void sp_256_mont_shift_5(sp_digit* r, const sp_digit* a)
     n = a[4] >> 48;
     for (i = 0; i < 4; i++) {
         n += (sp_uint64)a[5 + i] << 4;
-        r[i] = n & 0xfffffffffffffL;
+        r[i] = (sp_digit)(n & 0xfffffffffffffL);
         n >>= 52;
     }
     n += (sp_uint64)a[9] << 4;
@@ -767,10 +762,10 @@ static void sp_256_mont_shift_5(sp_digit* r, const sp_digit* a)
     sp_uint64 n;
 
     n  = a[4] >> 48;
-    n += (sp_uint64)a[ 5] << 4U; r[ 0] = n & 0xfffffffffffffUL; n >>= 52U;
-    n += (sp_uint64)a[ 6] << 4U; r[ 1] = n & 0xfffffffffffffUL; n >>= 52U;
-    n += (sp_uint64)a[ 7] << 4U; r[ 2] = n & 0xfffffffffffffUL; n >>= 52U;
-    n += (sp_uint64)a[ 8] << 4U; r[ 3] = n & 0xfffffffffffffUL; n >>= 52U;
+    n += (sp_uint64)a[ 5] << 4U; r[ 0] = (sp_digit)(n & 0xfffffffffffffUL); n >>= 52U;
+    n += (sp_uint64)a[ 6] << 4U; r[ 1] = (sp_digit)(n & 0xfffffffffffffUL); n >>= 52U;
+    n += (sp_uint64)a[ 7] << 4U; r[ 2] = (sp_digit)(n & 0xfffffffffffffUL); n >>= 52U;
+    n += (sp_uint64)a[ 8] << 4U; r[ 3] = (sp_digit)(n & 0xfffffffffffffUL); n >>= 52U;
     n += (sp_uint64)a[ 9] << 4U; r[ 4] = n;
 #endif /* WOLFSSL_SP_SMALL */
     XMEMSET(&r[5], 0, sizeof(*r) * 5U);
@@ -1118,13 +1113,13 @@ SP_NOINLINE static void sp_256_rshift1_sm2_5(sp_digit* r, const sp_digit* a)
     int i;
 
     for (i=0; i<4; i++) {
-        r[i] = (a[i] >> 1) + ((a[i + 1] << 51) & 0xfffffffffffffL);
+        r[i] = (a[i] >> 1) + (sp_digit)((a[i + 1] << 51) & 0xfffffffffffffL);
     }
 #else
-    r[0] = (a[0] >> 1) + ((a[1] << 51) & 0xfffffffffffffL);
-    r[1] = (a[1] >> 1) + ((a[2] << 51) & 0xfffffffffffffL);
-    r[2] = (a[2] >> 1) + ((a[3] << 51) & 0xfffffffffffffL);
-    r[3] = (a[3] >> 1) + ((a[4] << 51) & 0xfffffffffffffL);
+    r[0] = (a[0] >> 1) + (sp_digit)((a[1] << 51) & 0xfffffffffffffL);
+    r[1] = (a[1] >> 1) + (sp_digit)((a[2] << 51) & 0xfffffffffffffL);
+    r[2] = (a[2] >> 1) + (sp_digit)((a[3] << 51) & 0xfffffffffffffL);
+    r[3] = (a[3] >> 1) + (sp_digit)((a[4] << 51) & 0xfffffffffffffL);
 #endif
     r[4] = a[4] >> 1;
 }
@@ -1753,23 +1748,23 @@ SP_NOINLINE static void sp_256_rshift_sm2_5(sp_digit* r, const sp_digit* a,
 
 #ifdef WOLFSSL_SP_SMALL
     for (i=0; i<4; i++) {
-        r[i] = ((a[i] >> n) | (a[i + 1] << (52 - n))) & 0xfffffffffffffL;
+        r[i] = (sp_digit)(((a[i] >> n) | (a[i + 1] << (52 - n))) & 0xfffffffffffffL);
     }
 #else
     for (i=0; i<0; i += 8) {
-        r[i+0] = (a[i+0] >> n) | ((a[i+1] << (52 - n)) & 0xfffffffffffffL);
-        r[i+1] = (a[i+1] >> n) | ((a[i+2] << (52 - n)) & 0xfffffffffffffL);
-        r[i+2] = (a[i+2] >> n) | ((a[i+3] << (52 - n)) & 0xfffffffffffffL);
-        r[i+3] = (a[i+3] >> n) | ((a[i+4] << (52 - n)) & 0xfffffffffffffL);
-        r[i+4] = (a[i+4] >> n) | ((a[i+5] << (52 - n)) & 0xfffffffffffffL);
-        r[i+5] = (a[i+5] >> n) | ((a[i+6] << (52 - n)) & 0xfffffffffffffL);
-        r[i+6] = (a[i+6] >> n) | ((a[i+7] << (52 - n)) & 0xfffffffffffffL);
-        r[i+7] = (a[i+7] >> n) | ((a[i+8] << (52 - n)) & 0xfffffffffffffL);
+        r[i+0] = (a[i+0] >> n) | (sp_digit)((a[i+1] << (52 - n)) & 0xfffffffffffffL);
+        r[i+1] = (a[i+1] >> n) | (sp_digit)((a[i+2] << (52 - n)) & 0xfffffffffffffL);
+        r[i+2] = (a[i+2] >> n) | (sp_digit)((a[i+3] << (52 - n)) & 0xfffffffffffffL);
+        r[i+3] = (a[i+3] >> n) | (sp_digit)((a[i+4] << (52 - n)) & 0xfffffffffffffL);
+        r[i+4] = (a[i+4] >> n) | (sp_digit)((a[i+5] << (52 - n)) & 0xfffffffffffffL);
+        r[i+5] = (a[i+5] >> n) | (sp_digit)((a[i+6] << (52 - n)) & 0xfffffffffffffL);
+        r[i+6] = (a[i+6] >> n) | (sp_digit)((a[i+7] << (52 - n)) & 0xfffffffffffffL);
+        r[i+7] = (a[i+7] >> n) | (sp_digit)((a[i+8] << (52 - n)) & 0xfffffffffffffL);
     }
-    r[0] = (a[0] >> n) | ((a[1] << (52 - n)) & 0xfffffffffffffL);
-    r[1] = (a[1] >> n) | ((a[2] << (52 - n)) & 0xfffffffffffffL);
-    r[2] = (a[2] >> n) | ((a[3] << (52 - n)) & 0xfffffffffffffL);
-    r[3] = (a[3] >> n) | ((a[4] << (52 - n)) & 0xfffffffffffffL);
+    r[0] = (a[0] >> n) | (sp_digit)((a[1] << (52 - n)) & 0xfffffffffffffL);
+    r[1] = (a[1] >> n) | (sp_digit)((a[2] << (52 - n)) & 0xfffffffffffffL);
+    r[2] = (a[2] >> n) | (sp_digit)((a[3] << (52 - n)) & 0xfffffffffffffL);
+    r[3] = (a[3] >> n) | (sp_digit)((a[4] << (52 - n)) & 0xfffffffffffffL);
 #endif /* WOLFSSL_SP_SMALL */
     r[4] = a[4] >> n;
 }
@@ -2497,13 +2492,13 @@ static void sp_256_proj_point_add_sub_sm2_5(sp_point_256* ra,
 /* Structure used to describe recoding of scalar multiplication. */
 typedef struct ecc_recode_256 {
     /* Index into pre-computation table. */
-    uint8_t i;
+    word8 i;
     /* Use the negative of the point. */
-    uint8_t neg;
+    word8 neg;
 } ecc_recode_256;
 
 /* The index into pre-computation table to use. */
-static const uint8_t recode_index_5_6[66] = {
+static const word8 recode_index_5_6[66] = {
      0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,
     16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
     32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,
@@ -2512,7 +2507,7 @@ static const uint8_t recode_index_5_6[66] = {
 };
 
 /* Whether to negate y-ordinate. */
-static const uint8_t recode_neg_5_6[66] = {
+static const word8 recode_neg_5_6[66] = {
      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
      1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
@@ -2530,7 +2525,7 @@ static void sp_256_ecc_recode_6_5(const sp_digit* k, ecc_recode_256* v)
 {
     int i;
     int j;
-    uint8_t y;
+    word8 y;
     int carry = 0;
     int o;
     sp_digit n;
@@ -2539,7 +2534,7 @@ static void sp_256_ecc_recode_6_5(const sp_digit* k, ecc_recode_256* v)
     n = k[j];
     o = 0;
     for (i=0; i<43; i++) {
-        y = (uint8_t)(int8_t)n;
+        y = (word8)(int8_t)n;
         if (o + 6 < 52) {
             y &= 0x3f;
             n >>= 6;
@@ -2553,12 +2548,12 @@ static void sp_256_ecc_recode_6_5(const sp_digit* k, ecc_recode_256* v)
         }
         else if (++j < 5) {
             n = k[j];
-            y |= (uint8_t)((n << (52 - o)) & 0x3f);
+            y |= (word8)((n << (52 - o)) & 0x3f);
             o -= 46;
             n >>= o;
         }
 
-        y += (uint8_t)carry;
+        y = (word8)(y + carry);
         v[i].i = recode_index_5_6[y];
         v[i].neg = recode_neg_5_6[y];
         carry = (y >> 6) + v[i].neg;
@@ -3118,7 +3113,7 @@ typedef struct sp_cache_256_t {
     /* Precomputation table for point. */
     sp_table_entry_256 table[256];
     /* Count of entries in table. */
-    uint32_t cnt;
+    word32 cnt;
     /* Point and table set in entry. */
     int set;
 } sp_cache_256_t;
@@ -3146,7 +3141,7 @@ static void sp_ecc_get_cache_256(const sp_point_256* g, sp_cache_256_t** cache)
 {
     int i;
     int j;
-    uint32_t least;
+    word32 least;
 
     if (sp_cache_256_inited == 0) {
         for (i=0; i<FP_ENTRIES; i++) {
@@ -6173,7 +6168,7 @@ int sp_ecc_map_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ)
 #endif /* WOLFSSL_PUBLIC_ECC_ADD_DBL */
 #ifdef HAVE_COMP_KEY
 /* Square root power for the P256 curve. */
-static const uint64_t p256_sm2_sqrt_power[4] = {
+static const word64 p256_sm2_sqrt_power[4] = {
     0x4000000000000000,0xffffffffc0000000,0xffffffffffffffff,
     0x3fffffffbfffffff
 };
