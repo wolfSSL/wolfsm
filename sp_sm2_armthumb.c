@@ -1,6 +1,6 @@
 /* sp.c
  *
- * Copyright (C) 2006-2024 wolfSSL Inc.
+ * Copyright (C) 2006-2025 wolfSSL Inc.
  *
  * This file is part of wolfSSL.
  *
@@ -21,16 +21,11 @@
 
 /* Implementation by Sean Parkinson. */
 
-#ifdef HAVE_CONFIG_H
-    #include <config.h>
-#endif
-
-#include <wolfssl/wolfcrypt/settings.h>
+#include <wolfssl/wolfcrypt/libwolfssl_sources.h>
 
 #if defined(WOLFSSL_HAVE_SP_RSA) || defined(WOLFSSL_HAVE_SP_DH) || \
     defined(WOLFSSL_HAVE_SP_ECC)
 
-#include <wolfssl/wolfcrypt/error-crypt.h>
 #include <wolfssl/wolfcrypt/cpuid.h>
 #ifdef NO_INLINE
     #include <wolfssl/wolfcrypt/misc.h>
@@ -900,7 +895,7 @@ SP_NOINLINE static sp_digit sp_256_add_sm2_8(sp_digit* r, const sp_digit* a,
         :
         : "memory", "r3", "r4", "r5", "r6", "r7", "cc"
     );
-    return (uint32_t)(size_t)r;
+    return (word32)(size_t)r;
 }
 
 #else
@@ -992,7 +987,7 @@ SP_NOINLINE static sp_digit sp_256_add_sm2_8(sp_digit* r, const sp_digit* a,
         :
         : "memory", "r3", "r4", "r5", "r6", "cc"
     );
-    return (uint32_t)(size_t)r;
+    return (word32)(size_t)r;
 }
 
 #endif /* WOLFSSL_SP_SMALL */
@@ -1065,7 +1060,7 @@ SP_NOINLINE static sp_digit sp_256_sub_in_place_sm2_8(sp_digit* a,
         :
         : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "cc"
     );
-    return (uint32_t)(size_t)a;
+    return (word32)(size_t)a;
 }
 
 #else
@@ -1159,7 +1154,7 @@ SP_NOINLINE static sp_digit sp_256_sub_in_place_sm2_8(sp_digit* a,
         :
         : "memory", "r2", "r3", "r4", "r5", "cc"
     );
-    return (uint32_t)(size_t)a;
+    return (word32)(size_t)a;
 }
 
 #endif /* WOLFSSL_SP_SMALL */
@@ -1223,7 +1218,7 @@ SP_NOINLINE static sp_digit sp_256_cond_sub_sm2_8(sp_digit* r,
         :
         : "memory", "r4", "r5", "r6", "r7", "r8", "cc"
     );
-    return (uint32_t)(size_t)r;
+    return (word32)(size_t)r;
 }
 
 /* Mul a by digit b into r. (r = a * b)
@@ -2025,7 +2020,7 @@ SP_NOINLINE static sp_digit div_256_word_8(sp_digit d1, sp_digit d0,
         :
         : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "cc"
     );
-    return (uint32_t)(size_t)d1;
+    return (word32)(size_t)d1;
 }
 
 /* AND m into each word of a and store in r.
@@ -2161,7 +2156,7 @@ SP_NOINLINE static sp_int32 sp_256_cmp_sm2_8(const sp_digit* a,
         :
         : "memory", "r2", "r3", "r4", "r5", "r6", "r7", "cc"
     );
-    return (uint32_t)(size_t)a;
+    return (word32)(size_t)a;
 }
 
 /* Divide d in a and put remainder into r (m*d + r = a)
@@ -6059,7 +6054,7 @@ typedef struct sp_cache_256_t {
     /* Precomputation table for point. */
     sp_table_entry_256 table[16];
     /* Count of entries in table. */
-    uint32_t cnt;
+    word32 cnt;
     /* Point and table set in entry. */
     int set;
 } sp_cache_256_t;
@@ -6087,7 +6082,7 @@ static void sp_ecc_get_cache_256(const sp_point_256* g, sp_cache_256_t** cache)
 {
     int i;
     int j;
-    uint32_t least;
+    word32 least;
 
     if (sp_cache_256_inited == 0) {
         for (i=0; i<FP_ENTRIES; i++) {
@@ -6480,7 +6475,7 @@ typedef struct sp_cache_256_t {
     /* Precomputation table for point. */
     sp_table_entry_256 table[256];
     /* Count of entries in table. */
-    uint32_t cnt;
+    word32 cnt;
     /* Point and table set in entry. */
     int set;
 } sp_cache_256_t;
@@ -6508,7 +6503,7 @@ static void sp_ecc_get_cache_256(const sp_point_256* g, sp_cache_256_t** cache)
 {
     int i;
     int j;
-    uint32_t least;
+    word32 least;
 
     if (sp_cache_256_inited == 0) {
         for (i=0; i<FP_ENTRIES; i++) {
@@ -8408,7 +8403,8 @@ static void sp_256_from_bin(sp_digit* r, int size, const byte* a, int n)
     int j;
     byte* d;
 
-    for (i = n - 1,j = 0; i >= 3; i -= 4) {
+    j = 0;
+    for (i = n - 1; i >= 3; i -= 4) {
         r[j]  = ((sp_digit)a[i - 0] <<  0) |
                 ((sp_digit)a[i - 1] <<  8) |
                 ((sp_digit)a[i - 2] << 16) |
@@ -8419,12 +8415,20 @@ static void sp_256_from_bin(sp_digit* r, int size, const byte* a, int n)
     if (i >= 0) {
         r[j] = 0;
 
-        d = (byte*)r;
+        d = (byte*)(r + j);
+#ifdef BIG_ENDIAN_ORDER
         switch (i) {
-            case 2: d[n - 1 - 2] = a[2]; //fallthrough
-            case 1: d[n - 1 - 1] = a[1]; //fallthrough
-            case 0: d[n - 1 - 0] = a[0]; //fallthrough
+            case 2: d[1] = *(a++); //fallthrough
+            case 1: d[2] = *(a++); //fallthrough
+            case 0: d[3] = *a    ; //fallthrough
         }
+#else
+        switch (i) {
+            case 2: d[2] = a[2]; //fallthrough
+            case 1: d[1] = a[1]; //fallthrough
+            case 0: d[0] = a[0]; //fallthrough
+        }
+#endif
         j++;
     }
 
@@ -8826,7 +8830,7 @@ SP_NOINLINE static sp_digit sp_256_sub_sm2_8(sp_digit* r, const sp_digit* a,
         :
         : "memory", "r3", "r4", "r5", "r6", "cc"
     );
-    return (uint32_t)(size_t)r;
+    return (word32)(size_t)r;
 }
 
 #else
@@ -8917,7 +8921,7 @@ SP_NOINLINE static sp_digit sp_256_sub_sm2_8(sp_digit* r, const sp_digit* a,
         :
         : "memory", "r3", "r4", "r5", "r6", "cc"
     );
-    return (uint32_t)(size_t)r;
+    return (word32)(size_t)r;
 }
 
 #endif /* WOLFSSL_SP_SMALL */
@@ -8990,7 +8994,7 @@ SP_NOINLINE static sp_digit sp_256_cond_add_sm2_8(sp_digit* r,
         :
         : "memory", "r4", "r5", "r6", "r7", "r8", "cc"
     );
-    return (uint32_t)(size_t)r;
+    return (word32)(size_t)r;
 }
 
 #if defined(HAVE_ECC_SIGN) || defined(HAVE_ECC_VERIFY)
@@ -9894,7 +9898,7 @@ int sp_ecc_map_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ)
 #endif /* WOLFSSL_PUBLIC_ECC_ADD_DBL */
 #ifdef HAVE_COMP_KEY
 /* Square root power for the P256 curve. */
-static const uint32_t p256_sm2_sqrt_power[8] = {
+static const word32 p256_sm2_sqrt_power[8] = {
     0x00000000,0x40000000,0xc0000000,0xffffffff,0xffffffff,0xffffffff,
     0xbfffffff,0x3fffffff
 };

@@ -23,12 +23,7 @@
  *  https://datatracker.ietf.org/doc/html/draft-ribose-cfrg-sm4
  */
 
-#ifdef HAVE_CONFIG_H
-    #include <config.h>
-#endif
-
-#include <wolfssl/wolfcrypt/settings.h>
-#include <wolfssl/wolfcrypt/error-crypt.h>
+#include <wolfssl/wolfcrypt/libwolfssl_sources.h>
 
 #ifdef WOLFSSL_SM4
 

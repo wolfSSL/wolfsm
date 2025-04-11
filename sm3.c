@@ -23,17 +23,11 @@
  *   https://datatracker.ietf.org/doc/html/draft-oscca-cfrg-sm3-02
  */
 
-#ifdef HAVE_CONFIG_H
-    #include <config.h>
-#endif
-
-#include <wolfssl/wolfcrypt/settings.h>
-#include <wolfssl/wolfcrypt/types.h>
+#include <wolfssl/wolfcrypt/libwolfssl_sources.h>
 
 #ifdef WOLFSSL_SM3
 
 #include <wolfssl/wolfcrypt/sm3.h>
-#include <wolfssl/wolfcrypt/error-crypt.h>
 #include <wolfssl/wolfcrypt/cpuid.h>
 #include <wolfssl/wolfcrypt/hash.h>
 
