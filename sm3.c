@@ -920,6 +920,20 @@ static WC_INLINE void sm3_buffer_msg_bytes(wc_Sm3* sm3, const byte* data,
  */
 int wc_Sm3Update(wc_Sm3* sm3, const byte* data, word32 len)
 {
+#ifdef WOLFSSL_SMALL_STACK
+    enum { SCRATCH = WC_SM3_BLOCK_SIZE };     /* 64 */
+#else
+    enum { SCRATCH = WC_SM3_BLOCK_SIZE * 4 }; /* 256, still a multiple of 64 */
+#endif
+#if defined(WOLFSSL_GENERAL_ALIGNMENT) && (WOLFSSL_GENERAL_ALIGNMENT > 0)
+    /* one aligned block on the stack */
+    byte blk[SCRATCH]
+        __attribute__((aligned(WOLFSSL_GENERAL_ALIGNMENT)));
+    const byte* p;
+    word32 rem;
+#else
+    /* SM3_COMPRESS_LEN will use full data in place */
+#endif
     int ret = 0;
 
     /* Validate parameters. */
@@ -952,11 +966,31 @@ int wc_Sm3Update(wc_Sm3* sm3, const byte* data, word32 len)
         /* Mask out bits that are not a multiple of 64. */
         word32 l = len & (word32)(~(WC_SM3_BLOCK_SIZE - 1));
 
-        /* Compress complete blocks of data. */
-        SM3_COMPRESS_LEN(sm3, data, l);
+#if defined(WOLFSSL_GENERAL_ALIGNMENT) && (WOLFSSL_GENERAL_ALIGNMENT > 0)
+        WOLFSSL_MSG("wc_Sm3Update re-align data");
+        /* Check If input pointer is unaligned, copy per block: */
+        if (((uintptr_t)data & 3u) != 0u) {
+            p = data;
+            rem = l;
+            /* We'll keep the required memory small in a block loop */
+            while (rem) {
+                XMEMCPY(blk, p, WC_SM3_BLOCK_SIZE);
+                /* compress exactly one block from an aligned buffer */
+                SM3_COMPRESS_LEN(sm3, blk, WC_SM3_BLOCK_SIZE);
+                p   += WC_SM3_BLOCK_SIZE;
+                rem -= WC_SM3_BLOCK_SIZE;
+            }
+        }
+        else
+#endif
+        {
+            /* Already aligned (or not needed); Compress complete data block */
+            SM3_COMPRESS_LEN(sm3, data, l);
+        }
+
         data += l;
         len -= l;
-    }
+    } /* len >= WC_SM3_BLOCK_SIZE */
 
     if ((ret == 0) && (len > 0)) {
         /* Store unprocessed data less than a block. */
