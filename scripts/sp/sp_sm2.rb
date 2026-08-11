@@ -25,6 +25,7 @@ require_relative "./base_sm2.rb"
 require_relative "./mod_sm2.rb"
 require_relative "./modinv_sm2.rb"
 require_relative "./mont_sm2.rb"
+require_relative "./riscv64/mont_sm2.rb"
 require_relative "./ecc_sm2.rb"
 
 class SinglePrecision_SM2 <SinglePrecision
@@ -46,6 +47,21 @@ class SinglePrecisionX86_64_SM2 <SinglePrecisionX86_64
   include ModInvX86_64_SM2
   include MontX86_64_SM2
   include Ecc_SM2
+
+  # WC_ASM_ATT_HIDDEN is defined in wolfssl/wolfcrypt/visibility.h, which only
+  # gained it after v5.9.2.  wolfSSL's own generated assembly ships alongside
+  # that header so it is always in step, but wolfsm is built against several
+  # wolfSSL releases - the CI matrix includes v5.9.2-stable - and there the
+  # macro is undefined and its name reaches the assembler, which reports
+  # "invalid character '(' in mnemonic".  Emit a no-op fallback after the
+  # includes so the output assembles against either.
+  def header_asm(name)
+    super(name)
+    att.puta "#ifndef WC_ASM_ATT_HIDDEN"
+    att.puta "#define WC_ASM_ATT_HIDDEN(name)"
+    att.puta "#endif"
+    att.puta ""
+  end
 end
 
 class SinglePrecisionArm32_SM2 <SinglePrecisionArm32
@@ -69,6 +85,13 @@ class SinglePrecisionArmThumb_SM2 <SinglePrecisionArmThumb
   include Ecc_SM2
 end
 
+class SinglePrecisionRiscv64_SM2 <SinglePrecisionRiscv64
+  include FileC_SM2
+  include ModInv_SM2
+  include MontRiscv64_SM2
+  include Ecc_SM2
+end
+
 class SinglePrecisionArm64_SM2 <SinglePrecisionArm64
   include FileC_SM2
   include ModInv_SM2
@@ -81,7 +104,7 @@ def generate_sm2(platform, out_file)
   case platform
     when "32"
       sp32 = SinglePrecisionC_SM2.new(32)
-      sp32.header()
+      sp32.header("sp.c")
       sp32.ifndef("WOLFSSL_SP_ASM")
       sp32.ifs("SP_WORD_SIZE == 32")
       sp32.write_num_macro()
@@ -95,7 +118,7 @@ def generate_sm2(platform, out_file)
       sp32.trailer()
     when "64"
       sp64 = SinglePrecisionC_SM2.new(64)
-      sp64.header()
+      sp64.header("sp.c")
       sp64.ifndef("WOLFSSL_SP_ASM")
       sp64.ifs("SP_WORD_SIZE == 64")
       sp64.write_num_macro()
@@ -108,10 +131,8 @@ def generate_sm2(platform, out_file)
       sp64.endif("!WOLFSSL_SP_ASM")
       sp64.trailer()
     when "x86_64"
-      att_asm = File.open(out_file + ".S", "w")
-      msvc_asm = File.open(out_file + ".asm", "w")
-      x86_64 = SinglePrecisionX86_64_SM2.new(64, att_asm, msvc_asm)
-      x86_64.header()
+      x86_64 = SinglePrecisionX86_64_SM2.new(64, out_file)
+      x86_64.header("sp.c")
       x86_64.header_asm(out_file)
       x86_64.att.ifdefa("WOLFSSL_SP_X86_64_ASM")
       x86_64.ifdefc("WOLFSSL_SP_X86_64_ASM")
@@ -124,11 +145,9 @@ def generate_sm2(platform, out_file)
       x86_64.att.endifa("WOLFSSL_SP_X86_64_ASM")
       x86_64.trailer_asm()
       x86_64.trailer()
-      att_asm.close
-      msvc_asm.close
     when "ARM32"
       asm = SinglePrecisionArm32_SM2.new(32, out_file)
-      asm.header()
+      asm.header("sp.c")
       asm.ifdef("WOLFSSL_SP_ARM32_ASM")
       asm.write_num_macro()
       asm.write_addr()
@@ -139,7 +158,7 @@ def generate_sm2(platform, out_file)
       asm.trailer()
     when "Thumb2"
       asm = SinglePrecisionThumb2_SM2.new(32, out_file)
-      asm.header()
+      asm.header("sp.c")
       asm.ifdef("WOLFSSL_SP_ARM_CORTEX_M_ASM")
       asm.write_num_macro()
       asm.write_addr()
@@ -151,7 +170,7 @@ def generate_sm2(platform, out_file)
     when "ARM_Thumb"
       gcc_file = File.open(out_file + ".c", "w")
       thumb = SinglePrecisionArmThumb_SM2.new(32, gcc_file)
-      thumb.header()
+      thumb.header("sp.c")
       thumb.ifdef("WOLFSSL_SP_ARM_THUMB_ASM")
       thumb.write_num_macro()
       thumb.write_addr()
@@ -163,7 +182,7 @@ def generate_sm2(platform, out_file)
       gcc_file.close
     when "ARM64"
       arm64 = SinglePrecisionArm64_SM2.new(64)
-      arm64.header()
+      arm64.header("sp.c")
       arm64.ifdef("WOLFSSL_SP_ARM64_ASM")
       arm64.write_num_macro()
       arm64.write_addr()
@@ -172,9 +191,20 @@ def generate_sm2(platform, out_file)
       arm64.endif("WOLFSSL_HAVE_SP_ECC")
       arm64.endif("WOLFSSL_SP_ARM64_ASM")
       arm64.trailer()
+    when "RISCV64"
+      rv = SinglePrecisionRiscv64_SM2.new(64, out_file)
+      rv.header("sp.c")
+      rv.ifdef("WOLFSSL_SP_RISCV64_ASM")
+      rv.write_num_macro()
+      rv.write_addr()
+      rv.ifdef("WOLFSSL_HAVE_SP_ECC")
+      rv.write_ecc(256, 64, 4, true, "SM2")
+      rv.endif("WOLFSSL_HAVE_SP_ECC")
+      rv.endif("WOLFSSL_SP_RISCV64_ASM")
+      rv.trailer()
     else
       STDERR.puts "Bad target: #{platform}"
-      STDERR.puts "Specify a target: 32 64 x86_64 ARM32 Thumb2 ARM_Thumb Cortex-M ARM64"
+      STDERR.puts "Specify a target: 32 64 x86_64 ARM32 Thumb2 ARM_Thumb Cortex-M ARM64 RISCV64"
       exit 1
   end
 end

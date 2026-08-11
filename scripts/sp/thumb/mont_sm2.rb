@@ -538,7 +538,7 @@ module MontArmThumb_SM2
  * mp  The digit representing the negative inverse of m mod 2^n.
  */
 EOF
-    ni_static_func(void, "sp_#{@total}_mont_reduce_#{@namef}#{words}",
+    sp_ni_static_func(void, "sp_#{@total}_mont_reduce_#{@namef}#{words}",
                    ["sp_digit*"      , "a" , 1, 32],
                    ["const sp_digit*", "m" , 0, 32],
                    ["sp_digit"       , "mp", 0, 32]

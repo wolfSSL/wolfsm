@@ -1,12 +1,12 @@
 /* sp.c
  *
- * Copyright (C) 2006-2025 wolfSSL Inc.
+ * Copyright (C) 2006-2026 wolfSSL Inc.
  *
  * This file is part of wolfSSL.
  *
  * wolfSSL is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
+ * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  *
  * wolfSSL is distributed in the hope that it will be useful,
@@ -20,6 +20,9 @@
  */
 
 /* Implementation by Sean Parkinson. */
+
+#define WC_FIPS_LL_CRYPTO
+#define _WC_BUILDING_SP_C
 
 #include <wolfssl/wolfcrypt/libwolfssl_sources.h>
 
@@ -47,6 +50,17 @@
 
 #include <wolfssl/wolfcrypt/sp.h>
 
+#if defined(WOLFSSL_USE_SAVE_VECTOR_REGISTERS) && !defined(WOLFSSL_SP_ASM) && \
+        !defined(DEBUG_VECTOR_REGISTER_ACCESS)
+    /* force off unneeded vector register save/restore. */
+    #undef SAVE_VECTOR_REGISTERS
+    #define SAVE_VECTOR_REGISTERS(fail_clause) SAVE_NO_VECTOR_REGISTERS(fail_clause)
+    #undef SAVE_VECTOR_REGISTERS2
+    #define SAVE_VECTOR_REGISTERS2() SAVE_NO_VECTOR_REGISTERS2()
+    #undef RESTORE_VECTOR_REGISTERS
+    #define RESTORE_VECTOR_REGISTERS() RESTORE_NO_VECTOR_REGISTERS()
+#endif
+
 #ifdef __IAR_SYSTEMS_ICC__
 #define __asm__        asm
 #define __volatile__   volatile
@@ -55,6 +69,82 @@
 #ifdef __KEIL__
 #define __asm__        __asm
 #define __volatile__   volatile
+#endif
+
+#ifdef WOLFSSL_SP_SMALL_STACK
+    #define SP_DECL_VAR(TYPE, NAME, CNT)                                \
+        TYPE* NAME = NULL
+    #define SP_ALLOC_VAR(TYPE, NAME, CNT, HEAP, DT)                     \
+        if (err == MP_OKAY) {                                           \
+            (NAME) = (TYPE*)XMALLOC(sizeof(TYPE) * (CNT), (HEAP), DT);  \
+            if ((NAME) == NULL) {                                       \
+                err = MEMORY_E;                                         \
+            }                                                           \
+        }
+
+    #define SP_VAR_OK(NAME)          ((NAME) != NULL)
+
+    #define SP_FREE_VAR(NAME, HEAP, DT)                                 \
+        XFREE(NAME, (HEAP), DT)
+    #define SP_ZEROFREE_VAR(TYPE, NAME, CNT, HEAP, DT)                  \
+        do {                                                            \
+            if ((NAME) != NULL) {                                       \
+                ForceZero(NAME, sizeof(TYPE) * (CNT));                  \
+            }                                                           \
+            SP_FREE_VAR(NAME, HEAP, DT);                                \
+        } while (0)
+    #define SP_ZEROFREE_VAR_ALT(TYPE, NAME, FZ_NAME, CNT, HEAP, DT)     \
+        do {                                                            \
+            if ((FZ_NAME) != NULL) {                                    \
+                ForceZero(FZ_NAME, sizeof(TYPE) * (CNT));               \
+            }                                                           \
+            SP_FREE_VAR(NAME, HEAP, DT);                                \
+        } while (0)
+#else
+    #define SP_DECL_VAR(TYPE, NAME, CNT)                                \
+        TYPE NAME[CNT]
+    #define SP_ALLOC_VAR(TYPE, NAME, CNT, HEAP, DT)                     \
+        WC_DO_NOTHING
+    #define SP_VAR_OK(NAME)          (1)
+    #define SP_FREE_VAR(NAME, HEAP, DT)                                 \
+        WC_DO_NOTHING
+    #define SP_ZEROFREE_VAR(TYPE, NAME, CNT, HEAP, DT)                  \
+        do {                                                            \
+            if ((NAME) != NULL) {                                       \
+                ForceZero(NAME, sizeof(TYPE) * (CNT));                  \
+            }                                                           \
+        } while (0)
+    #define SP_ZEROFREE_VAR_ALT(TYPE, NAME, FZ_NAME, CNT, HEAP, DT)     \
+        do {                                                            \
+            if ((FZ_NAME) != NULL) {                                    \
+                ForceZero(FZ_NAME, sizeof(TYPE) * (CNT));               \
+            }                                                           \
+        } while (0)
+#endif
+
+/* Variables too large to place on the stack of a constrained environment.
+ * The Linux kernel stack is only a few pages and the ECC window tables are
+ * many kilobytes, so allocate those from the heap there as well. */
+#if defined(WOLFSSL_SP_SMALL_STACK) || defined(WOLFSSL_SMALL_STACK) || \
+    defined(WOLFSSL_LINUXKM)
+    #define SP_DECL_VAR_LARGE(TYPE, NAME, CNT)                          \
+        TYPE* NAME = NULL
+    #define SP_ALLOC_VAR_LARGE(TYPE, NAME, CNT, HEAP, DT)               \
+        if (err == MP_OKAY) {                                           \
+            (NAME) = (TYPE*)XMALLOC(sizeof(TYPE) * (CNT), (HEAP), DT);  \
+            if ((NAME) == NULL) {                                       \
+                err = MEMORY_E;                                         \
+            }                                                           \
+        }
+    #define SP_FREE_VAR_LARGE(NAME, HEAP, DT)                           \
+        XFREE(NAME, (HEAP), DT)
+#else
+    #define SP_DECL_VAR_LARGE(TYPE, NAME, CNT)                          \
+        TYPE NAME[CNT]
+    #define SP_ALLOC_VAR_LARGE(TYPE, NAME, CNT, HEAP, DT)               \
+        WC_DO_NOTHING
+    #define SP_FREE_VAR_LARGE(NAME, HEAP, DT)                           \
+        WC_DO_NOTHING
 #endif
 
 #ifdef WOLFSSL_SP_ARM64_ASM
@@ -159,9 +249,9 @@ static const sp_digit p256_sm2_b[4] = {
 #ifdef WOLFSSL_SP_SMALL
 /* Multiply a and b into r. (r = a * b)
  *
- * r  A single precision integer.
- * a  A single precision integer.
- * b  A single precision integer.
+ * @param [out] r  A single precision integer.
+ * @param [in]  a  A single precision integer.
+ * @param [in]  b  A single precision integer.
  */
 static void sp_256_mul_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit* b)
 {
@@ -210,9 +300,9 @@ static void sp_256_mul_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit* b)
 #else
 /* Multiply a and b into r. (r = a * b)
  *
- * r  A single precision integer.
- * a  A single precision integer.
- * b  A single precision integer.
+ * @param [out] r  A single precision integer.
+ * @param [in]  a  A single precision integer.
+ * @param [in]  b  A single precision integer.
  */
 SP_NOINLINE static void sp_256_mul_sm2_4(sp_digit* r, const sp_digit* a,
     const sp_digit* b)
@@ -222,84 +312,84 @@ SP_NOINLINE static void sp_256_mul_sm2_4(sp_digit* r, const sp_digit* a,
         "ldp	x15, x16, [%[a], 16]\n\t"
         "ldp	x17, x19, [%[b], 0]\n\t"
         "ldp	x20, x21, [%[b], 16]\n\t"
-        "# A[0] * B[0]\n\t"
+        /* A[0] * B[0] */
         "umulh	x6, x13, x17\n\t"
         "mul	x5, x13, x17\n\t"
-        "# A[2] * B[0]\n\t"
+        /* A[2] * B[0] */
         "umulh	x8, x15, x17\n\t"
         "mul	x7, x15, x17\n\t"
-        "# A[1] * B[0]\n\t"
+        /* A[1] * B[0] */
         "mul	x3, x14, x17\n\t"
         "adds	x6, x6, x3\n\t"
         "umulh	x4, x14, x17\n\t"
         "adcs	x7, x7, x4\n\t"
         "adc	x8, x8, xzr\n\t"
-        "# A[0] * B[2]\n\t"
+        /* A[0] * B[2] */
         "mul	x3, x13, x20\n\t"
         "adds	x7, x7, x3\n\t"
         "umulh	x4, x13, x20\n\t"
         "adcs	x8, x8, x4\n\t"
-        "# A[1] * B[3]\n\t"
+        /* A[1] * B[3] */
         "mul	x9, x14, x21\n\t"
         "adcs	x9, x9, xzr\n\t"
         "umulh	x10, x14, x21\n\t"
         "adc	x10, x10, xzr\n\t"
-        "# A[0] * B[1]\n\t"
+        /* A[0] * B[1] */
         "mul	x3, x13, x19\n\t"
         "adds	x6, x6, x3\n\t"
         "umulh	x4, x13, x19\n\t"
         "adcs	x7, x7, x4\n\t"
-        "# A[2] * B[1]\n\t"
+        /* A[2] * B[1] */
         "mul	x3, x15, x19\n\t"
         "adcs	x8, x8, x3\n\t"
         "umulh	x4, x15, x19\n\t"
         "adcs	x9, x9, x4\n\t"
         "adc	x10, x10, xzr\n\t"
-        "# A[1] * B[2]\n\t"
+        /* A[1] * B[2] */
         "mul	x3, x14, x20\n\t"
         "adds	x8, x8, x3\n\t"
         "umulh	x4, x14, x20\n\t"
         "adcs	x9, x9, x4\n\t"
         "adcs	x10, x10, xzr\n\t"
         "adc	x11, xzr, xzr\n\t"
-        "# A[1] * B[1]\n\t"
+        /* A[1] * B[1] */
         "mul	x3, x14, x19\n\t"
         "adds	x7, x7, x3\n\t"
         "umulh	x4, x14, x19\n\t"
         "adcs	x8, x8, x4\n\t"
-        "# A[3] * B[1]\n\t"
+        /* A[3] * B[1] */
         "mul	x3, x16, x19\n\t"
         "adcs	x9, x9, x3\n\t"
         "umulh	x4, x16, x19\n\t"
         "adcs	x10, x10, x4\n\t"
         "adc	x11, x11, xzr\n\t"
-        "# A[2] * B[2]\n\t"
+        /* A[2] * B[2] */
         "mul	x3, x15, x20\n\t"
         "adds	x9, x9, x3\n\t"
         "umulh	x4, x15, x20\n\t"
         "adcs	x10, x10, x4\n\t"
-        "# A[3] * B[3]\n\t"
+        /* A[3] * B[3] */
         "mul	x3, x16, x21\n\t"
         "adcs	x11, x11, x3\n\t"
         "umulh	x12, x16, x21\n\t"
         "adc	x12, x12, xzr\n\t"
-        "# A[0] * B[3]\n\t"
+        /* A[0] * B[3] */
         "mul	x3, x13, x21\n\t"
         "adds	x8, x8, x3\n\t"
         "umulh	x4, x13, x21\n\t"
         "adcs	x9, x9, x4\n\t"
-        "# A[2] * B[3]\n\t"
+        /* A[2] * B[3] */
         "mul	x3, x15, x21\n\t"
         "adcs	x10, x10, x3\n\t"
         "umulh	x4, x15, x21\n\t"
         "adcs	x11, x11, x4\n\t"
         "adc	x12, x12, xzr\n\t"
-        "# A[3] * B[0]\n\t"
+        /* A[3] * B[0] */
         "mul	x3, x16, x17\n\t"
         "adds	x8, x8, x3\n\t"
         "umulh	x4, x16, x17\n\t"
         "adcs	x9, x9, x4\n\t"
-        "# A[3] * B[2]\n\t"
+        /* A[3] * B[2] */
         "mul	x3, x16, x20\n\t"
         "adcs	x10, x10, x3\n\t"
         "umulh	x4, x16, x20\n\t"
@@ -318,41 +408,41 @@ SP_NOINLINE static void sp_256_mul_sm2_4(sp_digit* r, const sp_digit* a,
 #endif /* WOLFSSL_SP_SMALL */
 /* Square a and put result in r. (r = a * a)
  *
- * r  A single precision integer.
- * a  A single precision integer.
+ * @param [out] r  A single precision integer.
+ * @param [in]  a  A single precision integer.
  */
 SP_NOINLINE static void sp_256_sqr_sm2_4(sp_digit* r, const sp_digit* a)
 {
     __asm__ __volatile__ (
         "ldp	x12, x13, [%[a], 0]\n\t"
         "ldp	x14, x15, [%[a], 16]\n\t"
-        "# A[0] * A[1]\n\t"
+        /* A[0] * A[1] */
         "umulh	x6, x12, x13\n\t"
         "mul	x5, x12, x13\n\t"
-        "# A[0] * A[3]\n\t"
+        /* A[0] * A[3] */
         "umulh	x8, x12, x15\n\t"
         "mul	x7, x12, x15\n\t"
-        "# A[0] * A[2]\n\t"
+        /* A[0] * A[2] */
         "mul	x2, x12, x14\n\t"
         "adds	x6, x6, x2\n\t"
         "umulh	x3, x12, x14\n\t"
         "adcs	x7, x7, x3\n\t"
-        "# A[1] * A[3]\n\t"
+        /* A[1] * A[3] */
         "mul	x2, x13, x15\n\t"
         "adcs	x8, x8, x2\n\t"
         "umulh	x9, x13, x15\n\t"
         "adc	x9, x9, xzr\n\t"
-        "# A[1] * A[2]\n\t"
+        /* A[1] * A[2] */
         "mul	x2, x13, x14\n\t"
         "adds	x7, x7, x2\n\t"
         "umulh	x3, x13, x14\n\t"
         "adcs	x8, x8, x3\n\t"
-        "# A[2] * A[3]\n\t"
+        /* A[2] * A[3] */
         "mul	x2, x14, x15\n\t"
         "adcs	x9, x9, x2\n\t"
         "umulh	x10, x14, x15\n\t"
         "adc	x10, x10, xzr\n\t"
-        "# Double\n\t"
+        /* Double */
         "adds	x5, x5, x5\n\t"
         "adcs	x6, x6, x6\n\t"
         "adcs	x7, x7, x7\n\t"
@@ -360,20 +450,20 @@ SP_NOINLINE static void sp_256_sqr_sm2_4(sp_digit* r, const sp_digit* a)
         "adcs	x9, x9, x9\n\t"
         "adcs	x10, x10, x10\n\t"
         "adc	x11, xzr, xzr\n\t"
-        "# A[0] * A[0]\n\t"
+        /* A[0] * A[0] */
         "umulh	x3, x12, x12\n\t"
         "mul	x4, x12, x12\n\t"
-        "# A[1] * A[1]\n\t"
+        /* A[1] * A[1] */
         "mul	x2, x13, x13\n\t"
         "adds	x5, x5, x3\n\t"
         "umulh	x3, x13, x13\n\t"
         "adcs	x6, x6, x2\n\t"
-        "# A[2] * A[2]\n\t"
+        /* A[2] * A[2] */
         "mul	x2, x14, x14\n\t"
         "adcs	x7, x7, x3\n\t"
         "umulh	x3, x14, x14\n\t"
         "adcs	x8, x8, x2\n\t"
-        "# A[3] * A[3]\n\t"
+        /* A[3] * A[3] */
         "mul	x2, x15, x15\n\t"
         "adcs	x9, x9, x3\n\t"
         "umulh	x3, x15, x15\n\t"
@@ -391,9 +481,9 @@ SP_NOINLINE static void sp_256_sqr_sm2_4(sp_digit* r, const sp_digit* a)
 
 /* Add b to a into r. (r = a + b)
  *
- * r  A single precision integer.
- * a  A single precision integer.
- * b  A single precision integer.
+ * @param [out] r  A single precision integer.
+ * @param [in]  a  A single precision integer.
+ * @param [in]  b  A single precision integer.
  */
 static sp_digit sp_256_add_sm2_4(sp_digit* r, const sp_digit* a,
         const sp_digit* b)
@@ -420,9 +510,9 @@ static sp_digit sp_256_add_sm2_4(sp_digit* r, const sp_digit* a,
 
 /* Sub b from a into r. (r = a - b)
  *
- * r  A single precision integer.
- * a  A single precision integer.
- * b  A single precision integer.
+ * @param [out] r  A single precision integer.
+ * @param [in]  a  A single precision integer.
+ * @param [in]  b  A single precision integer.
  */
 static sp_digit sp_256_sub_sm2_4(sp_digit* r, const sp_digit* a,
         const sp_digit* b)
@@ -449,8 +539,8 @@ static sp_digit sp_256_sub_sm2_4(sp_digit* r, const sp_digit* a,
 
 /* Sub b from a into a. (a -= b)
  *
- * a  A single precision integer and result.
- * b  A single precision integer.
+ * @param [in, out] a  A single precision integer and result.
+ * @param [in]      b  A single precision integer.
  */
 static sp_digit sp_256_sub_in_place_sm2_4(sp_digit* a, const sp_digit* b)
 {
@@ -477,10 +567,11 @@ static sp_digit sp_256_sub_in_place_sm2_4(sp_digit* a, const sp_digit* b)
 /* Conditionally subtract b from a using the mask m.
  * m is -1 to subtract and 0 when not copying.
  *
- * r  A single precision number representing condition subtract result.
- * a  A single precision number to subtract from.
- * b  A single precision number to subtract.
- * m  Mask value to apply.
+ * @param [out] r  A single precision number representing condition subtract
+ *                 result.
+ * @param [in]  a  A single precision number to subtract from.
+ * @param [in]  b  A single precision number to subtract.
+ * @param [in]  m  Mask value to apply.
  */
 static sp_digit sp_256_cond_sub_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit* b,
         sp_digit m)
@@ -512,29 +603,29 @@ static sp_digit sp_256_cond_sub_sm2_4(sp_digit* r, const sp_digit* a, const sp_d
 
 /* Mul a by digit b into r. (r = a * b)
  *
- * r  A single precision integer.
- * a  A single precision integer.
- * b  A single precision digit.
+ * @param [out] r  A single precision integer.
+ * @param [in]  a  A single precision integer.
+ * @param [in]  b  A single precision digit.
  */
 static void sp_256_mul_d_sm2_4(sp_digit* r, const sp_digit* a,
         sp_digit b)
 {
     __asm__ __volatile__ (
-        "# A[0] * B\n\t"
+        /* A[0] * B */
         "ldp	x2, x3, [%[a]]\n\t"
         "ldp	x4, x5, [%[a], 16]\n\t"
         "umulh	x7, %[b], x2\n\t"
         "mul	x2, %[b], x2\n\t"
-        "# A[1] * B\n\t"
+        /* A[1] * B */
         "mul	x8, %[b], x3\n\t"
         "umulh	x9, %[b], x3\n\t"
         "adds	x3, x7, x8\n\t"
-        "# A[2] * B\n\t"
+        /* A[2] * B */
         "mul	x8, %[b], x4\n\t"
         "adc	x7, xzr, x9\n\t"
         "umulh	x9, %[b], x4\n\t"
         "adds	x4, x7, x8\n\t"
-        "# A[3] * B\n\t"
+        /* A[3] * B */
         "mul	x8, %[b], x5\n\t"
         "adc	x7, xzr, x9\n\t"
         "umulh	x9, %[b], x5\n\t"
@@ -553,10 +644,11 @@ static void sp_256_mul_d_sm2_4(sp_digit* r, const sp_digit* a,
  *
  * Assumes divisor has highest bit set.
  *
- * d1   The high order half of the number to divide.
- * d0   The low order half of the number to divide.
- * div  The divisor.
- * returns the result of the division.
+ * @param [in] d1   The high order half of the number to divide.
+ * @param [in] d0   The low order half of the number to divide.
+ * @param [in] div  The divisor.
+ *
+ * @return  The result of the division.
  */
 static sp_digit div_256_word_4(sp_digit d1, sp_digit d0, sp_digit div)
 {
@@ -612,9 +704,9 @@ static sp_digit div_256_word_4(sp_digit d1, sp_digit d0, sp_digit div)
 
 /* AND m into each word of a and store in r.
  *
- * r  A single precision integer.
- * a  A single precision integer.
- * m  Mask to AND against each digit.
+ * @param [out] r  A single precision integer.
+ * @param [in]  a  A single precision integer.
+ * @param [in]  m  Mask to AND against each digit.
  */
 static void sp_256_mask_4(sp_digit* r, const sp_digit* a, sp_digit m)
 {
@@ -634,10 +726,11 @@ static void sp_256_mask_4(sp_digit* r, const sp_digit* a, sp_digit m)
 
 /* Compare a with b in constant time.
  *
- * a  A single precision integer.
- * b  A single precision integer.
- * return -ve, 0 or +ve if a is less than, equal to or greater than b
- * respectively.
+ * @param [in] a  A single precision integer.
+ * @param [in] b  A single precision integer.
+ *
+ * @return  -ve, 0 or +ve if a is less than, equal to or greater than b
+ *          respectively.
  */
 static sp_int64 sp_256_cmp_sm2_4(const sp_digit* a, const sp_digit* b)
 {
@@ -713,11 +806,12 @@ static sp_int64 sp_256_cmp_sm2_4(const sp_digit* a, const sp_digit* b)
 /* Divide d in a and put remainder into r (m*d + r = a)
  * m is not calculated as it is not needed at this time.
  *
- * a  Number to be divided.
- * d  Number to divide with.
- * m  Multiplier result.
- * r  Remainder from the division.
- * returns MP_OKAY indicating success.
+ * @param [in]  a  Number to be divided.
+ * @param [in]  d  Number to divide with.
+ * @param [in]  m  Multiplier result.
+ * @param [out] r  Remainder from the division.
+ *
+ * @return  MP_OKAY indicating success.
  */
 static WC_INLINE int sp_256_div_sm2_4(const sp_digit* a, const sp_digit* d,
         sp_digit* m, sp_digit* r)
@@ -755,10 +849,11 @@ static WC_INLINE int sp_256_div_sm2_4(const sp_digit* a, const sp_digit* d,
 
 /* Reduce a modulo m into r. (r = a mod m)
  *
- * r  A single precision number that is the reduced result.
- * a  A single precision number that is to be reduced.
- * m  A single precision number that is the modulus to reduce with.
- * returns MP_OKAY indicating success.
+ * @param [out] r  A single precision number that is the reduced result.
+ * @param [in]  a  A single precision number that is to be reduced.
+ * @param [in]  m  A single precision number that is the modulus to reduce with.
+ *
+ * @return  MP_OKAY indicating success.
  */
 static WC_INLINE int sp_256_mod_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit* m)
 {
@@ -767,10 +862,12 @@ static WC_INLINE int sp_256_mod_sm2_4(sp_digit* r, const sp_digit* a, const sp_d
 
 /* Multiply a number by Montgomery normalizer mod modulus (prime).
  *
- * r  The resulting Montgomery form number.
- * a  The number to convert.
- * m  The modulus (prime).
- * returns MEMORY_E when memory allocation fails and MP_OKAY otherwise.
+ * @param [out] r  The resulting Montgomery form number.
+ * @param [in]  a  The number to convert.
+ * @param [in]  m  The modulus (prime).
+ *
+ * @return  MP_OKAY otherwise.
+ * @return  MEMORY_E when memory allocation fails.
  */
 static int sp_256_mod_mul_norm_sm2_4(sp_digit* r, const sp_digit* a,
         const sp_digit* m)
@@ -781,9 +878,9 @@ static int sp_256_mod_mul_norm_sm2_4(sp_digit* r, const sp_digit* a,
 
 /* Convert an mp_int to an array of sp_digit.
  *
- * r  A single precision integer.
- * size  Maximum number of bytes to convert
- * a  A multi-precision integer.
+ * @param [out] r     A single precision integer.
+ * @param [in]  size  Maximum number of bytes to convert
+ * @param [in]  a     A multi-precision integer.
  */
 static void sp_256_from_mp(sp_digit* r, int size, const mp_int* a)
 {
@@ -801,18 +898,32 @@ static void sp_256_from_mp(sp_digit* r, int size, const mp_int* a)
 #elif DIGIT_BIT > 64
     unsigned int i;
     int j = 0;
+    int o = 0;
     word32 s = 0;
+    /* Digit holder and mask are full mp_digit width (the type of a->dp[]) so
+     * the wide-digit split shifts below are not truncated when DIGIT_BIT is
+     * wider than the sp word (e.g. sp_c32.c over a 64-bit mp_digit). */
+    mp_digit d;
+    /* mask = all ones while the read index is a valid digit (index < a->used),
+     * else zero. It is recomputed at the end of each iteration and reused: it
+     * zeros the digit at or after a->used, and negated (-mask is 0 or 1) it
+     * advances the read index only while another digit remains, so o never
+     * reads past the last valid digit. The first digit is always valid, so mask
+     * starts as all ones and no pre-loop calculation is needed. */
+    mp_digit mask = (mp_digit)0 - 1;
 
     r[0] = 0;
-    for (i = 0; i < (unsigned int)a->used && j < size; i++) {
-        r[j] |= ((sp_digit)a->dp[i] << s);
+    /* Loop a fixed number of times (bounded by the output size, not by
+     * a->used) so a secret value is converted in constant time. */
+    for (i = 0; j < size; i++) {
+        d = a->dp[o] & mask;
+        r[j] |= (sp_digit)(d << s);
         r[j] &= 0xffffffffffffffffl;
         s = 64U - s;
         if (j + 1 >= size) {
             break;
         }
-        /* lint allow cast of mismatch word32 and mp_digit */
-        r[++j] = (sp_digit)(a->dp[i] >> s); /*lint !e9033*/
+        r[++j] = (sp_digit)(d >> s);
         while ((s + 64U) <= (word32)DIGIT_BIT) {
             s += 64U;
             r[j] &= 0xffffffffffffffffl;
@@ -820,14 +931,18 @@ static void sp_256_from_mp(sp_digit* r, int size, const mp_int* a)
                 break;
             }
             if (s < (word32)DIGIT_BIT) {
-                /* lint allow cast of mismatch word32 and mp_digit */
-                r[++j] = (sp_digit)(a->dp[i] >> s); /*lint !e9033*/
+                r[++j] = (sp_digit)(d >> s);
             }
             else {
                 r[++j] = (sp_digit)0;
             }
         }
         s = (word32)DIGIT_BIT - s;
+        /* Recompute mask for the next read index, then advance o by -mask
+         * (0 or 1) so it only moves while another digit remains. */
+        mask = (mp_digit)0 - (((mp_digit)(i + 1U) - (mp_digit)(unsigned int)a->used) >>
+            (sizeof(mp_digit) * 8 - 1));
+        o += (int)((mp_digit)0 - mask);
     }
 
     for (j++; j < size; j++) {
@@ -840,7 +955,7 @@ static void sp_256_from_mp(sp_digit* r, int size, const mp_int* a)
 
     r[0] = 0;
     for (i = 0; i < (unsigned int)a->used && j < size; i++) {
-        r[j] |= ((sp_digit)a->dp[i]) << s;
+        r[j] |= ((sp_uint64)a->dp[i]) << s;
         if (s + DIGIT_BIT >= 64) {
             r[j] &= 0xffffffffffffffffl;
             if (j + 1 >= size) {
@@ -869,8 +984,8 @@ static void sp_256_from_mp(sp_digit* r, int size, const mp_int* a)
 
 /* Convert a point of type ecc_point to type sp_point_256.
  *
- * p   Point of type sp_point_256 (result).
- * pm  Point of type ecc_point.
+ * @param [out] p   Point of type sp_point_256 (result).
+ * @param [in]  pm  Point of type ecc_point.
  */
 static void sp_256_point_from_ecc_point_4(sp_point_256* p,
         const ecc_point* pm)
@@ -886,8 +1001,8 @@ static void sp_256_point_from_ecc_point_4(sp_point_256* p,
 
 /* Convert an array of sp_digit to an mp_int.
  *
- * a  A single precision integer.
- * r  A multi-precision integer.
+ * @param [in]  a  A single precision integer.
+ * @param [out] r  A multi-precision integer.
  */
 static int sp_256_to_mp(const sp_digit* a, mp_int* r)
 {
@@ -906,7 +1021,7 @@ static int sp_256_to_mp(const sp_digit* a, mp_int* r)
 
         r->dp[0] = 0;
         for (i = 0; i < 4; i++) {
-            r->dp[j] |= (mp_digit)(a[i] << s);
+            r->dp[j] |= (mp_digit)((sp_uint64)a[i] << s);
             r->dp[j] &= ((sp_digit)1 << DIGIT_BIT) - 1;
             s = DIGIT_BIT - s;
             r->dp[++j] = (mp_digit)(a[i] >> s);
@@ -931,7 +1046,7 @@ static int sp_256_to_mp(const sp_digit* a, mp_int* r)
 
         r->dp[0] = 0;
         for (i = 0; i < 4; i++) {
-            r->dp[j] |= ((mp_digit)a[i]) << s;
+            r->dp[j] |= ((sp_uint64)a[i]) << s;
             if (s + 64 >= DIGIT_BIT) {
     #if DIGIT_BIT != 32 && DIGIT_BIT != 64
                 r->dp[j] &= ((sp_digit)1 << DIGIT_BIT) - 1;
@@ -954,10 +1069,11 @@ static int sp_256_to_mp(const sp_digit* a, mp_int* r)
 
 /* Convert a point of type sp_point_256 to type ecc_point.
  *
- * p   Point of type sp_point_256.
- * pm  Point of type ecc_point (result).
- * returns MEMORY_E when allocation of memory in ecc_point fails otherwise
- * MP_OKAY.
+ * @param [in] p   Point of type sp_point_256.
+ * @param [in] pm  Point of type ecc_point (result).
+ *
+ * @return  MP_OKAY otherwise.
+ * @return  MEMORY_E when allocation of memory in ecc_point fails.
  */
 static int sp_256_point_to_ecc_point_4(const sp_point_256* p, ecc_point* pm)
 {
@@ -977,9 +1093,9 @@ static int sp_256_point_to_ecc_point_4(const sp_point_256* p, ecc_point* pm)
 /* Conditionally copy a into r using the mask m.
  * m is -1 to copy and 0 when not.
  *
- * r  A single precision number to copy over.
- * a  A single precision number to copy.
- * m  Mask value to apply.
+ * @param [out] r  A single precision number to copy over.
+ * @param [in]  a  A single precision number to copy.
+ * @param [in]  m  Mask value to apply.
  */
 static void sp_256_cond_copy_sm2_4(sp_digit* r, const sp_digit* a, sp_digit m)
 {
@@ -1028,129 +1144,129 @@ static void sp_256_mont_mul_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
         "ldp	x15, x16, [%[a], 16]\n\t"
         "ldp	x17, x19, [%[b], 0]\n\t"
         "ldp	x20, x21, [%[b], 16]\n\t"
-        "# A[0] * B[0]\n\t"
+        /* A[0] * B[0] */
         "umulh	x6, x13, x17\n\t"
         "mul	x5, x13, x17\n\t"
-        "# A[2] * B[0]\n\t"
+        /* A[2] * B[0] */
         "umulh	x8, x15, x17\n\t"
         "mul	x7, x15, x17\n\t"
-        "# A[1] * B[0]\n\t"
+        /* A[1] * B[0] */
         "mul	x3, x14, x17\n\t"
         "adds	x6, x6, x3\n\t"
         "umulh	x4, x14, x17\n\t"
         "adcs	x7, x7, x4\n\t"
         "adc	x8, x8, xzr\n\t"
-        "# A[0] * B[2]\n\t"
+        /* A[0] * B[2] */
         "mul	x3, x13, x20\n\t"
         "adds	x7, x7, x3\n\t"
         "umulh	x4, x13, x20\n\t"
         "adcs	x8, x8, x4\n\t"
-        "# A[1] * B[3]\n\t"
+        /* A[1] * B[3] */
         "mul	x9, x14, x21\n\t"
         "adcs	x9, x9, xzr\n\t"
         "umulh	x10, x14, x21\n\t"
         "adc	x10, x10, xzr\n\t"
-        "# A[0] * B[1]\n\t"
+        /* A[0] * B[1] */
         "mul	x3, x13, x19\n\t"
         "adds	x6, x6, x3\n\t"
         "umulh	x4, x13, x19\n\t"
         "adcs	x7, x7, x4\n\t"
-        "# A[2] * B[1]\n\t"
+        /* A[2] * B[1] */
         "mul	x3, x15, x19\n\t"
         "adcs	x8, x8, x3\n\t"
         "umulh	x4, x15, x19\n\t"
         "adcs	x9, x9, x4\n\t"
         "adc	x10, x10, xzr\n\t"
-        "# A[1] * B[2]\n\t"
+        /* A[1] * B[2] */
         "mul	x3, x14, x20\n\t"
         "adds	x8, x8, x3\n\t"
         "umulh	x4, x14, x20\n\t"
         "adcs	x9, x9, x4\n\t"
         "adcs	x10, x10, xzr\n\t"
         "adc	x11, xzr, xzr\n\t"
-        "# A[1] * B[1]\n\t"
+        /* A[1] * B[1] */
         "mul	x3, x14, x19\n\t"
         "adds	x7, x7, x3\n\t"
         "umulh	x4, x14, x19\n\t"
         "adcs	x8, x8, x4\n\t"
-        "# A[3] * B[1]\n\t"
+        /* A[3] * B[1] */
         "mul	x3, x16, x19\n\t"
         "adcs	x9, x9, x3\n\t"
         "umulh	x4, x16, x19\n\t"
         "adcs	x10, x10, x4\n\t"
         "adc	x11, x11, xzr\n\t"
-        "# A[2] * B[2]\n\t"
+        /* A[2] * B[2] */
         "mul	x3, x15, x20\n\t"
         "adds	x9, x9, x3\n\t"
         "umulh	x4, x15, x20\n\t"
         "adcs	x10, x10, x4\n\t"
-        "# A[3] * B[3]\n\t"
+        /* A[3] * B[3] */
         "mul	x3, x16, x21\n\t"
         "adcs	x11, x11, x3\n\t"
         "umulh	x12, x16, x21\n\t"
         "adc	x12, x12, xzr\n\t"
-        "# A[0] * B[3]\n\t"
+        /* A[0] * B[3] */
         "mul	x3, x13, x21\n\t"
         "adds	x8, x8, x3\n\t"
         "umulh	x4, x13, x21\n\t"
         "adcs	x9, x9, x4\n\t"
-        "# A[2] * B[3]\n\t"
+        /* A[2] * B[3] */
         "mul	x3, x15, x21\n\t"
         "adcs	x10, x10, x3\n\t"
         "umulh	x4, x15, x21\n\t"
         "adcs	x11, x11, x4\n\t"
         "adc	x12, x12, xzr\n\t"
-        "# A[3] * B[0]\n\t"
+        /* A[3] * B[0] */
         "mul	x3, x16, x17\n\t"
         "adds	x8, x8, x3\n\t"
         "umulh	x4, x16, x17\n\t"
         "adcs	x9, x9, x4\n\t"
-        "# A[3] * B[2]\n\t"
+        /* A[3] * B[2] */
         "mul	x3, x16, x20\n\t"
         "adcs	x10, x10, x3\n\t"
         "umulh	x4, x16, x20\n\t"
         "adcs	x11, x11, x4\n\t"
         "mov	x3, x5\n\t"
         "adc	x12, x12, xzr\n\t"
-        "# mu = a[0..3] + a[0..2] << 64 - a[0..2] << 32 << 64\n\t"
-        "#    + a[0..1] << 128 - (a[0..1] * 2) << 32 << 128\n\t"
-        "#    + (a[0..0] * 2) << 192 - (a[0..0] * 4) << 32 << 192\n\t"
-        "# Start Reduction\n\t"
-        "# mu = a[0..3]\n\t"
-        "#    + (a[0..0] * 2) << 192\n\t"
+        /* mu = a[0..3] + a[0..2] << 64 - a[0..2] << 32 << 64 */
+        /*    + a[0..1] << 128 - (a[0..1] * 2) << 32 << 128 */
+        /*    + (a[0..0] * 2) << 192 - (a[0..0] * 4) << 32 << 192 */
+        /* Start Reduction */
+        /* mu = a[0..3] */
+        /*    + (a[0..0] * 2) << 192 */
         "add   x14, x8, x5\n\t"
         "add   x14, x14, x5\n\t"
-        "#    + a[0..1] << 128\n\t"
+        /*    + a[0..1] << 128 */
         "adds  x13, x7, x5\n\t"
         "adc   x14, x14, x6\n\t"
-        "#    + a[0..2] << 64\n\t"
+        /*    + a[0..2] << 64 */
         "adds  x4, x6, x5\n\t"
         "adcs  x13, x13, x6\n\t"
         "adc   x14, x14, x7\n\t"
-        "#    a[0..2] << 32\n\t"
+        /*    a[0..2] << 32 */
         "lsl   x15, x5, #32\n\t"
         "extr  x16, x6, x5, #32\n\t"
         "extr  x17, x7, x6, #32\n\t"
-        "#    - a[0..2] << 32 << 64\n\t"
+        /*    - a[0..2] << 32 << 64 */
         "subs  x4, x4, x15\n\t"
         "sbcs  x13, x13, x16\n\t"
         "sbc   x14, x14, x17\n\t"
-        "#    - (a[0..1] * 2) << 32 << 128\n\t"
+        /*    - (a[0..1] * 2) << 32 << 128 */
         "subs  x13, x13, x15\n\t"
         "sbc   x14, x14, x16\n\t"
         "subs  x13, x13, x15\n\t"
         "sbc   x14, x14, x16\n\t"
-        "#    - (a[0..0] * 4) << 32 << 192\n\t"
+        /*    - (a[0..0] * 4) << 32 << 192 */
         "lsl   x15, x15, #2\n\t"
         "sub   x14, x14, x15\n\t"
-        "# a += (mu << 256) - (mu << 224) - (mu << 96) + (mu << 64) - mu\n\t"
-        "#   a += mu << 256\n\t"
+        /* a += (mu << 256) - (mu << 224) - (mu << 96) + (mu << 64) - mu */
+        /*   a += mu << 256 */
         "adds  x9, x9, x5\n\t"
         "adcs  x10, x10, x4\n\t"
         "adcs  x11, x11, x13\n\t"
         "adcs  x12, x12, x14\n\t"
         "adc   x17, xzr, xzr\n\t"
-        "#   a += mu << 64\n\t"
+        /*   a += mu << 64 */
         "adds  x6, x6, x5\n\t"
         "adcs  x7, x7, x4\n\t"
         "adcs  x8, x8, x13\n\t"
@@ -1159,13 +1275,13 @@ static void sp_256_mont_mul_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
         "adcs  x11, x11, xzr\n\t"
         "adcs  x12, x12, xzr\n\t"
         "adc   x17, x17, xzr\n\t"
-        "# mu <<= 32\n\t"
+        /* mu <<= 32 */
         "lsl   x3, x5, #32\n\t"
         "lsr   x15, x14, #32\n\t"
         "extr  x14, x14, x13, #32\n\t"
         "extr  x13, x13, x4, #32\n\t"
         "extr  x4, x4, x5, #32\n\t"
-        "#   a -= (mu << 32) << 64\n\t"
+        /*   a -= (mu << 32) << 64 */
         "subs  x6, x6, x3\n\t"
         "sbcs  x7, x7, x4\n\t"
         "sbcs  x8, x8, x13\n\t"
@@ -1174,7 +1290,7 @@ static void sp_256_mont_mul_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
         "sbcs  x11, x11, xzr\n\t"
         "sbcs  x12, x12, xzr\n\t"
         "sbc   x17, x17, xzr\n\t"
-        "#   a -= (mu << 32) << 192\n\t"
+        /*   a -= (mu << 32) << 192 */
         "subs  x8, x8, x3\n\t"
         "sbcs  x9, x9, x4\n\t"
         "sbcs  x10, x10, x13\n\t"
@@ -1182,14 +1298,14 @@ static void sp_256_mont_mul_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
         "sbcs  x12, x12, x15\n\t"
         "sbc   x17, x17, xzr\n\t"
         "neg   x17, x17\n\t"
-        "# mask m and sub from result if overflow\n\t"
-        "#  m[0] = -1 & mask = mask\n\t"
+        /* mask m and sub from result if overflow */
+        /*  m[0] = -1 & mask = mask */
         "lsl   x16, x17, 32\n\t"
         "subs  x9, x9, x17\n\t"
         "sbcs  x10, x10, x16\n\t"
         "sbcs  x11, x11, x17\n\t"
         "stp   x9, x10, [%[r], 0]\n\t"
-        "#  m[2] = -1 & mask = mask\n\t"
+        /*  m[2] = -1 & mask = mask */
         "and   x17, x17, 0xfffffffeffffffff\n\t"
         "sbc   x12, x12, x17\n\t"
         "stp   x11, x12, [%[r], 16]\n\t"
@@ -1215,33 +1331,33 @@ static void sp_256_mont_sqr_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
     __asm__ __volatile__ (
         "ldp	x12, x13, [%[a], 0]\n\t"
         "ldp	x14, x15, [%[a], 16]\n\t"
-        "# A[0] * A[1]\n\t"
+        /* A[0] * A[1] */
         "umulh	x6, x12, x13\n\t"
         "mul	x5, x12, x13\n\t"
-        "# A[0] * A[3]\n\t"
+        /* A[0] * A[3] */
         "umulh	x8, x12, x15\n\t"
         "mul	x7, x12, x15\n\t"
-        "# A[0] * A[2]\n\t"
+        /* A[0] * A[2] */
         "mul	x2, x12, x14\n\t"
         "adds	x6, x6, x2\n\t"
         "umulh	x3, x12, x14\n\t"
         "adcs	x7, x7, x3\n\t"
-        "# A[1] * A[3]\n\t"
+        /* A[1] * A[3] */
         "mul	x2, x13, x15\n\t"
         "adcs	x8, x8, x2\n\t"
         "umulh	x9, x13, x15\n\t"
         "adc	x9, x9, xzr\n\t"
-        "# A[1] * A[2]\n\t"
+        /* A[1] * A[2] */
         "mul	x2, x13, x14\n\t"
         "adds	x7, x7, x2\n\t"
         "umulh	x3, x13, x14\n\t"
         "adcs	x8, x8, x3\n\t"
-        "# A[2] * A[3]\n\t"
+        /* A[2] * A[3] */
         "mul	x2, x14, x15\n\t"
         "adcs	x9, x9, x2\n\t"
         "umulh	x10, x14, x15\n\t"
         "adc	x10, x10, xzr\n\t"
-        "# Double\n\t"
+        /* Double */
         "adds	x5, x5, x5\n\t"
         "adcs	x6, x6, x6\n\t"
         "adcs	x7, x7, x7\n\t"
@@ -1249,65 +1365,65 @@ static void sp_256_mont_sqr_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
         "adcs	x9, x9, x9\n\t"
         "adcs	x10, x10, x10\n\t"
         "adc	x11, xzr, xzr\n\t"
-        "# A[0] * A[0]\n\t"
+        /* A[0] * A[0] */
         "umulh	x3, x12, x12\n\t"
         "mul	x4, x12, x12\n\t"
-        "# A[1] * A[1]\n\t"
+        /* A[1] * A[1] */
         "mul	x2, x13, x13\n\t"
         "adds	x5, x5, x3\n\t"
         "umulh	x3, x13, x13\n\t"
         "adcs	x6, x6, x2\n\t"
-        "# A[2] * A[2]\n\t"
+        /* A[2] * A[2] */
         "mul	x2, x14, x14\n\t"
         "adcs	x7, x7, x3\n\t"
         "umulh	x3, x14, x14\n\t"
         "adcs	x8, x8, x2\n\t"
-        "# A[3] * A[3]\n\t"
+        /* A[3] * A[3] */
         "mul	x2, x15, x15\n\t"
         "adcs	x9, x9, x3\n\t"
         "umulh	x3, x15, x15\n\t"
         "adcs	x10, x10, x2\n\t"
         "mov	x2, x4\n\t"
         "adc	x11, x11, x3\n\t"
-        "# mu = a[0..3] + a[0..2] << 64 - a[0..2] << 32 << 64\n\t"
-        "#    + a[0..1] << 128 - (a[0..1] * 2) << 32 << 128\n\t"
-        "#    + (a[0..0] * 2) << 192 - (a[0..0] * 4) << 32 << 192\n\t"
-        "# Start Reduction\n\t"
-        "# mu = a[0..3]\n\t"
-        "#    + (a[0..0] * 2) << 192\n\t"
+        /* mu = a[0..3] + a[0..2] << 64 - a[0..2] << 32 << 64 */
+        /*    + a[0..1] << 128 - (a[0..1] * 2) << 32 << 128 */
+        /*    + (a[0..0] * 2) << 192 - (a[0..0] * 4) << 32 << 192 */
+        /* Start Reduction */
+        /* mu = a[0..3] */
+        /*    + (a[0..0] * 2) << 192 */
         "add   x13, x7, x4\n\t"
         "add   x13, x13, x4\n\t"
-        "#    + a[0..1] << 128\n\t"
+        /*    + a[0..1] << 128 */
         "adds  x12, x6, x4\n\t"
         "adc   x13, x13, x5\n\t"
-        "#    + a[0..2] << 64\n\t"
+        /*    + a[0..2] << 64 */
         "adds  x3, x5, x4\n\t"
         "adcs  x12, x12, x5\n\t"
         "adc   x13, x13, x6\n\t"
-        "#    a[0..2] << 32\n\t"
+        /*    a[0..2] << 32 */
         "lsl   x14, x4, #32\n\t"
         "extr  x15, x5, x4, #32\n\t"
         "extr  x16, x6, x5, #32\n\t"
-        "#    - a[0..2] << 32 << 64\n\t"
+        /*    - a[0..2] << 32 << 64 */
         "subs  x3, x3, x14\n\t"
         "sbcs  x12, x12, x15\n\t"
         "sbc   x13, x13, x16\n\t"
-        "#    - (a[0..1] * 2) << 32 << 128\n\t"
+        /*    - (a[0..1] * 2) << 32 << 128 */
         "subs  x12, x12, x14\n\t"
         "sbc   x13, x13, x15\n\t"
         "subs  x12, x12, x14\n\t"
         "sbc   x13, x13, x15\n\t"
-        "#    - (a[0..0] * 4) << 32 << 192\n\t"
+        /*    - (a[0..0] * 4) << 32 << 192 */
         "lsl   x14, x14, #2\n\t"
         "sub   x13, x13, x14\n\t"
-        "# a += (mu << 256) - (mu << 224) - (mu << 96) + (mu << 64) - mu\n\t"
-        "#   a += mu << 256\n\t"
+        /* a += (mu << 256) - (mu << 224) - (mu << 96) + (mu << 64) - mu */
+        /*   a += mu << 256 */
         "adds  x8, x8, x4\n\t"
         "adcs  x9, x9, x3\n\t"
         "adcs  x10, x10, x12\n\t"
         "adcs  x11, x11, x13\n\t"
         "adc   x16, xzr, xzr\n\t"
-        "#   a += mu << 64\n\t"
+        /*   a += mu << 64 */
         "adds  x5, x5, x4\n\t"
         "adcs  x6, x6, x3\n\t"
         "adcs  x7, x7, x12\n\t"
@@ -1316,13 +1432,13 @@ static void sp_256_mont_sqr_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
         "adcs  x10, x10, xzr\n\t"
         "adcs  x11, x11, xzr\n\t"
         "adc   x16, x16, xzr\n\t"
-        "# mu <<= 32\n\t"
+        /* mu <<= 32 */
         "lsl   x2, x4, #32\n\t"
         "lsr   x14, x13, #32\n\t"
         "extr  x13, x13, x12, #32\n\t"
         "extr  x12, x12, x3, #32\n\t"
         "extr  x3, x3, x4, #32\n\t"
-        "#   a -= (mu << 32) << 64\n\t"
+        /*   a -= (mu << 32) << 64 */
         "subs  x5, x5, x2\n\t"
         "sbcs  x6, x6, x3\n\t"
         "sbcs  x7, x7, x12\n\t"
@@ -1331,7 +1447,7 @@ static void sp_256_mont_sqr_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
         "sbcs  x10, x10, xzr\n\t"
         "sbcs  x11, x11, xzr\n\t"
         "sbc   x16, x16, xzr\n\t"
-        "#   a -= (mu << 32) << 192\n\t"
+        /*   a -= (mu << 32) << 192 */
         "subs  x7, x7, x2\n\t"
         "sbcs  x8, x8, x3\n\t"
         "sbcs  x9, x9, x12\n\t"
@@ -1339,14 +1455,14 @@ static void sp_256_mont_sqr_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
         "sbcs  x11, x11, x14\n\t"
         "sbc   x16, x16, xzr\n\t"
         "neg   x16, x16\n\t"
-        "# mask m and sub from result if overflow\n\t"
-        "#  m[0] = -1 & mask = mask\n\t"
+        /* mask m and sub from result if overflow */
+        /*  m[0] = -1 & mask = mask */
         "lsl   x15, x16, 32\n\t"
         "subs  x8, x8, x16\n\t"
         "sbcs  x9, x9, x15\n\t"
         "sbcs  x10, x10, x16\n\t"
         "stp   x8, x9, [%[r], 0]\n\t"
-        "#  m[2] = -1 & mask = mask\n\t"
+        /*  m[2] = -1 & mask = mask */
         "and   x16, x16, 0xfffffffeffffffff\n\t"
         "sbc   x11, x11, x16\n\t"
         "stp   x10, x11, [%[r], 16]\n\t"
@@ -1359,11 +1475,11 @@ static void sp_256_mont_sqr_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit
 #if !defined(WOLFSSL_SP_SMALL)
 /* Square the Montgomery form number a number of times. (r = a ^ n mod m)
  *
- * r   Result of squaring.
- * a   Number to square in Montgomery form.
- * n   Number of times to square.
- * m   Modulus (prime).
- * mp  Montgomery multiplier.
+ * @param [out] r   Result of squaring.
+ * @param [in]  a   Number to square in Montgomery form.
+ * @param [in]  n   Number of times to square.
+ * @param [in]  m   Modulus (prime).
+ * @param [in]  mp  Montgomery multiplier.
  */
 SP_NOINLINE static void sp_256_mont_sqr_n_sm2_4(sp_digit* r,
     const sp_digit* a, int n, const sp_digit* m, sp_digit mp)
@@ -1467,7 +1583,7 @@ static void sp_256_mont_inv_sm2_4(sp_digit* r, const sp_digit* a, sp_digit* td)
 
 /* Normalize the values in each word to 64.
  *
- * a  Array of sp_digit to normalize.
+ * @param [in] a  Array of sp_digit to normalize.
  */
 #define sp_256_norm_4(a)
 
@@ -1486,45 +1602,45 @@ SP_NOINLINE static void sp_256_mont_reduce_sm2_4(sp_digit* a, const sp_digit* m,
         "ldp x14, x15, [%[a], 32]\n\t"
         "ldp x16, x17, [%[a], 48]\n\t"
         "mov   x3, x10\n\t"
-        "# mu = a[0..3] + a[0..2] << 64 - a[0..2] << 32 << 64\n\t"
-        "#    + a[0..1] << 128 - (a[0..1] * 2) << 32 << 128\n\t"
-        "#    + (a[0..0] * 2) << 192 - (a[0..0] * 4) << 32 << 192\n\t"
-        "# Start Reduction\n\t"
-        "# mu = a[0..3]\n\t"
-        "#    + (a[0..0] * 2) << 192\n\t"
+        /* mu = a[0..3] + a[0..2] << 64 - a[0..2] << 32 << 64 */
+        /*    + a[0..1] << 128 - (a[0..1] * 2) << 32 << 128 */
+        /*    + (a[0..0] * 2) << 192 - (a[0..0] * 4) << 32 << 192 */
+        /* Start Reduction */
+        /* mu = a[0..3] */
+        /*    + (a[0..0] * 2) << 192 */
         "add   x6, x13, x10\n\t"
         "add   x6, x6, x10\n\t"
-        "#    + a[0..1] << 128\n\t"
+        /*    + a[0..1] << 128 */
         "adds  x5, x12, x10\n\t"
         "adc   x6, x6, x11\n\t"
-        "#    + a[0..2] << 64\n\t"
+        /*    + a[0..2] << 64 */
         "adds  x4, x11, x10\n\t"
         "adcs  x5, x5, x11\n\t"
         "adc   x6, x6, x12\n\t"
-        "#    a[0..2] << 32\n\t"
+        /*    a[0..2] << 32 */
         "lsl   x7, x10, #32\n\t"
         "extr  x8, x11, x10, #32\n\t"
         "extr  x9, x12, x11, #32\n\t"
-        "#    - a[0..2] << 32 << 64\n\t"
+        /*    - a[0..2] << 32 << 64 */
         "subs  x4, x4, x7\n\t"
         "sbcs  x5, x5, x8\n\t"
         "sbc   x6, x6, x9\n\t"
-        "#    - (a[0..1] * 2) << 32 << 128\n\t"
+        /*    - (a[0..1] * 2) << 32 << 128 */
         "subs  x5, x5, x7\n\t"
         "sbc   x6, x6, x8\n\t"
         "subs  x5, x5, x7\n\t"
         "sbc   x6, x6, x8\n\t"
-        "#    - (a[0..0] * 4) << 32 << 192\n\t"
+        /*    - (a[0..0] * 4) << 32 << 192 */
         "lsl   x7, x7, #2\n\t"
         "sub   x6, x6, x7\n\t"
-        "# a += (mu << 256) - (mu << 224) - (mu << 96) + (mu << 64) - mu\n\t"
-        "#   a += mu << 256\n\t"
+        /* a += (mu << 256) - (mu << 224) - (mu << 96) + (mu << 64) - mu */
+        /*   a += mu << 256 */
         "adds  x14, x14, x10\n\t"
         "adcs  x15, x15, x4\n\t"
         "adcs  x16, x16, x5\n\t"
         "adcs  x17, x17, x6\n\t"
         "adc   x9, xzr, xzr\n\t"
-        "#   a += mu << 64\n\t"
+        /*   a += mu << 64 */
         "adds  x11, x11, x10\n\t"
         "adcs  x12, x12, x4\n\t"
         "adcs  x13, x13, x5\n\t"
@@ -1533,13 +1649,13 @@ SP_NOINLINE static void sp_256_mont_reduce_sm2_4(sp_digit* a, const sp_digit* m,
         "adcs  x16, x16, xzr\n\t"
         "adcs  x17, x17, xzr\n\t"
         "adc   x9, x9, xzr\n\t"
-        "# mu <<= 32\n\t"
+        /* mu <<= 32 */
         "lsl   x3, x10, #32\n\t"
         "lsr   x7, x6, #32\n\t"
         "extr  x6, x6, x5, #32\n\t"
         "extr  x5, x5, x4, #32\n\t"
         "extr  x4, x4, x10, #32\n\t"
-        "#   a -= (mu << 32) << 64\n\t"
+        /*   a -= (mu << 32) << 64 */
         "subs  x11, x11, x3\n\t"
         "sbcs  x12, x12, x4\n\t"
         "sbcs  x13, x13, x5\n\t"
@@ -1548,7 +1664,7 @@ SP_NOINLINE static void sp_256_mont_reduce_sm2_4(sp_digit* a, const sp_digit* m,
         "sbcs  x16, x16, xzr\n\t"
         "sbcs  x17, x17, xzr\n\t"
         "sbc   x9, x9, xzr\n\t"
-        "#   a -= (mu << 32) << 192\n\t"
+        /*   a -= (mu << 32) << 192 */
         "subs  x13, x13, x3\n\t"
         "sbcs  x14, x14, x4\n\t"
         "sbcs  x15, x15, x5\n\t"
@@ -1556,14 +1672,14 @@ SP_NOINLINE static void sp_256_mont_reduce_sm2_4(sp_digit* a, const sp_digit* m,
         "sbcs  x17, x17, x7\n\t"
         "sbc   x9, x9, xzr\n\t"
         "neg   x9, x9\n\t"
-        "# mask m and sub from result if overflow\n\t"
-        "#  m[0] = -1 & mask = mask\n\t"
+        /* mask m and sub from result if overflow */
+        /*  m[0] = -1 & mask = mask */
         "lsl   x8, x9, 32\n\t"
         "subs  x14, x14, x9\n\t"
         "sbcs  x15, x15, x8\n\t"
         "sbcs  x16, x16, x9\n\t"
         "stp   x14, x15, [%[a], 0]\n\t"
-        "#  m[2] = -1 & mask = mask\n\t"
+        /*  m[2] = -1 & mask = mask */
         "and   x9, x9, 0xfffffffeffffffff\n\t"
         "sbc   x17, x17, x9\n\t"
         "stp   x16, x17, [%[a], 16]\n\t"
@@ -1574,9 +1690,9 @@ SP_NOINLINE static void sp_256_mont_reduce_sm2_4(sp_digit* a, const sp_digit* m,
 }
 /* Map the Montgomery form projective coordinate point to an affine point.
  *
- * r  Resulting affine coordinate point.
- * p  Montgomery form projective coordinate point.
- * t  Temporary ordinate data.
+ * @param [out] r  Resulting affine coordinate point.
+ * @param [in]  p  Montgomery form projective coordinate point.
+ * @param [out] t  Temporary ordinate data.
  */
 static void sp_256_map_sm2_4(sp_point_256* r, const sp_point_256* p,
     sp_digit* t)
@@ -1614,9 +1730,9 @@ static void sp_256_map_sm2_4(sp_point_256* r, const sp_point_256* p,
 
 /* Double a Montgomery form number (r = a + a % m).
  *
- * r   Result of doubling.
- * a   Number to double in Montgomery form.
- * m   Modulus (prime).
+ * @param [out] r  Result of doubling.
+ * @param [in]  a  Number to double in Montgomery form.
+ * @param [in]  m  Modulus (prime).
  */
 SP_NOINLINE static void sp_256_mont_dbl_sm2_4(sp_digit* r, const sp_digit* a,
     const sp_digit* m)
@@ -1655,9 +1771,9 @@ SP_NOINLINE static void sp_256_mont_dbl_sm2_4(sp_digit* r, const sp_digit* a,
 
 /* Triple a Montgomery form number (r = a + a + a % m).
  *
- * r   Result of Tripling.
- * a   Number to triple in Montgomery form.
- * m   Modulus (prime).
+ * @param [out] r  Result of Tripling.
+ * @param [in]  a  Number to triple in Montgomery form.
+ * @param [in]  m  Modulus (prime).
  */
 SP_NOINLINE static void sp_256_mont_tpl_sm2_4(sp_digit* r, const sp_digit* a,
     const sp_digit* m)
@@ -1711,10 +1827,10 @@ SP_NOINLINE static void sp_256_mont_tpl_sm2_4(sp_digit* r, const sp_digit* a,
 
 /* Subtract two Montgomery form numbers (r = a - b % m).
  *
- * r   Result of subtration.
- * a   Number to subtract from in Montgomery form.
- * b   Number to subtract with in Montgomery form.
- * m   Modulus (prime).
+ * @param [out] r  Result of subtration.
+ * @param [in]  a  Number to subtract from in Montgomery form.
+ * @param [in]  b  Number to subtract with in Montgomery form.
+ * @param [in]  m  Modulus (prime).
  */
 SP_NOINLINE static void sp_256_mont_sub_sm2_4(sp_digit* r, const sp_digit* a,
     const sp_digit* b, const sp_digit* m)
@@ -1754,9 +1870,9 @@ SP_NOINLINE static void sp_256_mont_sub_sm2_4(sp_digit* r, const sp_digit* a,
 
 /* Divide the number by 2 mod the modulus (prime). (r = a / 2 % m)
  *
- * r  Result of division by 2.
- * a  Number to divide.
- * m  Modulus (prime).
+ * @param [out] r  Result of division by 2.
+ * @param [in]  a  Number to divide.
+ * @param [in]  m  Modulus (prime).
  */
 SP_NOINLINE static void sp_256_mont_div2_sm2_4(sp_digit* r, const sp_digit* a,
     const sp_digit* m)
@@ -1928,9 +2044,9 @@ static void sp_256_mont_add_sub_sm2_4(sp_digit* ra, sp_digit* rs, const sp_digit
 
 /* Double the Montgomery form projective point p.
  *
- * r  Result of doubling point.
- * p  Point to double.
- * t  Temporary ordinate data.
+ * @param [out] r  Result of doubling point.
+ * @param [in]  p  Point to double.
+ * @param [out] t  Temporary ordinate data.
  */
 static void sp_256_proj_point_dbl_sm2_4(sp_point_256* r, const sp_point_256* p,
     sp_digit* t)
@@ -1994,9 +2110,13 @@ typedef struct sp_256_proj_point_dbl_4_ctx {
 
 /* Double the Montgomery form projective point p.
  *
- * r  Result of doubling point.
- * p  Point to double.
- * t  Temporary ordinate data.
+ * Non-blocking version.  Call repeatedly until it does not return
+ * FP_WOULDBLOCK.  State is saved and restored through sp_ctx.
+ *
+ * @param [in, out] sp_ctx  Context to save state in for non-blocking calls.
+ * @param [out]     r       Result of doubling point.
+ * @param [in]      p       Point to double.
+ * @param [out]     t       Temporary ordinate data.
  */
 static int sp_256_proj_point_dbl_sm2_4_nb(sp_ecc_ctx_t* sp_ctx, sp_point_256* r,
         const sp_point_256* p, sp_digit* t)
@@ -2105,7 +2225,7 @@ static int sp_256_proj_point_dbl_sm2_4_nb(sp_ecc_ctx_t* sp_ctx, sp_point_256* r,
         /* Y = Y - T2 */
         sp_256_mont_sub_sm2_4(ctx->y, ctx->y, ctx->t2, p256_sm2_mod);
         ctx->state = 19;
-        /* fall-through */
+        FALL_THROUGH;
     case 19:
         err = MP_OKAY;
         break;
@@ -2120,10 +2240,9 @@ static int sp_256_proj_point_dbl_sm2_4_nb(sp_ecc_ctx_t* sp_ctx, sp_point_256* r,
 #endif /* WOLFSSL_SP_NONBLOCK */
 /* Double the Montgomery form projective point p a number of times.
  *
- * r  Result of repeated doubling of point.
- * p  Point to double.
- * n  Number of times to double
- * t  Temporary ordinate data.
+ * @param [in, out] p  Point to double and result.
+ * @param [in]      i  Number of times to double.
+ * @param [out]     t  Temporary ordinate data.
  */
 static void sp_256_proj_point_dbl_n_sm2_4(sp_point_256* p, int i,
     sp_digit* t)
@@ -2135,7 +2254,7 @@ static void sp_256_proj_point_dbl_n_sm2_4(sp_point_256* p, int i,
     sp_digit* x;
     sp_digit* y;
     sp_digit* z;
-    volatile int n = i;
+    volatile int n = i - 1;
 
     x = p->x;
     y = p->y;
@@ -2147,9 +2266,9 @@ static void sp_256_proj_point_dbl_n_sm2_4(sp_point_256* p, int i,
     sp_256_mont_sqr_sm2_4(w, z, p256_sm2_mod, p256_sm2_mp_mod);
     sp_256_mont_sqr_sm2_4(w, w, p256_sm2_mod, p256_sm2_mp_mod);
 #ifndef WOLFSSL_SP_SMALL
-    while (--n > 0)
+    while (n > 0)
 #else
-    while (--n >= 0)
+    while (n >= 0)
 #endif
     {
         /* A = 3*(X^2 - W) */
@@ -2178,6 +2297,7 @@ static void sp_256_proj_point_dbl_n_sm2_4(sp_point_256* p, int i,
         /* y = 2*A*(B - X) - Y^4 */
         sp_256_mont_mul_sm2_4(y, b, a, p256_sm2_mod, p256_sm2_mp_mod);
         sp_256_mont_sub_sm2_4(y, y, t1, p256_sm2_mod);
+        n = n - 1;
     }
 #ifndef WOLFSSL_SP_SMALL
     /* A = 3*(X^2 - W) */
@@ -2207,9 +2327,10 @@ static void sp_256_proj_point_dbl_n_sm2_4(sp_point_256* p, int i,
 /* Compare two numbers to determine if they are equal.
  * Constant time implementation.
  *
- * a  First number to compare.
- * b  Second number to compare.
- * returns 1 when equal and 0 otherwise.
+ * @param [in] a  First number to compare.
+ * @param [in] b  Second number to compare.
+ *
+ * @return  1 when equal and 0 otherwise.
  */
 static int sp_256_cmp_equal_4(const sp_digit* a, const sp_digit* b)
 {
@@ -2220,8 +2341,9 @@ static int sp_256_cmp_equal_4(const sp_digit* a, const sp_digit* b)
 /* Returns 1 if the number of zero.
  * Implementation is constant time.
  *
- * a  Number to check.
- * returns 1 if the number is zero and 0 otherwise.
+ * @param [in] a  Number to check.
+ *
+ * @return  1 when the number is zero and 0 otherwise.
  */
 static int sp_256_iszero_4(const sp_digit* a)
 {
@@ -2231,10 +2353,10 @@ static int sp_256_iszero_4(const sp_digit* a)
 
 /* Add two Montgomery form projective points.
  *
- * r  Result of addition.
- * p  First point to add.
- * q  Second point to add.
- * t  Temporary ordinate data.
+ * @param [out] r  Result of addition.
+ * @param [in]  p  First point to add.
+ * @param [in]  q  Second point to add.
+ * @param [out] t  Temporary ordinate data.
  */
 static void sp_256_proj_point_add_sm2_4(sp_point_256* r,
         const sp_point_256* p, const sp_point_256* q, sp_digit* t)
@@ -2375,10 +2497,14 @@ typedef struct sp_256_proj_point_add_4_ctx {
 
 /* Add two Montgomery form projective points.
  *
- * r  Result of addition.
- * p  First point to add.
- * q  Second point to add.
- * t  Temporary ordinate data.
+ * Non-blocking version.  Call repeatedly until it does not return
+ * FP_WOULDBLOCK.  State is saved and restored through sp_ctx.
+ *
+ * @param [in, out] sp_ctx  Context to save state in for non-blocking calls.
+ * @param [out]     r       Result of addition.
+ * @param [in]      p       First point to add.
+ * @param [in]      q       Second point to add.
+ * @param [out]     t       Temporary ordinate data.
  */
 static int sp_256_proj_point_add_sm2_4_nb(sp_ecc_ctx_t* sp_ctx, sp_point_256* r,
     const sp_point_256* p, const sp_point_256* q, sp_digit* t)
@@ -2386,15 +2512,15 @@ static int sp_256_proj_point_add_sm2_4_nb(sp_ecc_ctx_t* sp_ctx, sp_point_256* r,
     int err = FP_WOULDBLOCK;
     sp_256_proj_point_add_4_ctx* ctx = (sp_256_proj_point_add_sm2_4_ctx*)sp_ctx->data;
 
+    typedef char ctx_size_test[sizeof(sp_256_proj_point_add_4_ctx) >= sizeof(*sp_ctx) ? -1 : 1];
+    (void)sizeof(ctx_size_test);
+
     /* Ensure only the first point is the same as the result. */
     if (q == r) {
         const sp_point_256* a = p;
         p = q;
         q = a;
     }
-
-    typedef char ctx_size_test[sizeof(sp_256_proj_point_add_4_ctx) >= sizeof(*sp_ctx) ? -1 : 1];
-    (void)sizeof(ctx_size_test);
 
     switch (ctx->state) {
     case 0: /* INIT */
@@ -2603,10 +2729,11 @@ static int sp_256_proj_point_add_sm2_4_nb(sp_ecc_ctx_t* sp_ctx, sp_point_256* r,
 
 /* Double the Montgomery form projective point p a number of times.
  *
- * r  Result of repeated doubling of point.
- * p  Point to double.
- * n  Number of times to double
- * t  Temporary ordinate data.
+ * @param [out] r  Result of repeated doubling of point.
+ * @param [in]  p  Point to double.
+ * @param [in]  n  Number of times to double.
+ * @param [in]  m  Index multiplier into result array r.
+ * @param [out] t  Temporary ordinate data.
  */
 static void sp_256_proj_point_dbl_n_store_sm2_4(sp_point_256* r,
         const sp_point_256* p, int n, int m, sp_digit* t)
@@ -2673,11 +2800,11 @@ static void sp_256_proj_point_dbl_n_store_sm2_4(sp_point_256* r,
 
 /* Add two Montgomery form projective points.
  *
- * ra  Result of addition.
- * rs  Result of subtraction.
- * p   First point to add.
- * q   Second point to add.
- * t   Temporary ordinate data.
+ * @param [out] ra  Result of addition.
+ * @param [out] rs  Result of subtraction.
+ * @param [in]  p   First point to add.
+ * @param [in]  q   Second point to add.
+ * @param [out] t   Temporary ordinate data.
  */
 static void sp_256_proj_point_add_sub_sm2_4(sp_point_256* ra,
         sp_point_256* rs, const sp_point_256* p, const sp_point_256* q,
@@ -2777,8 +2904,8 @@ static const word8 recode_neg_4_6[66] = {
 /* Recode the scalar for multiplication using pre-computed values and
  * subtraction.
  *
- * k  Scalar to multiply by.
- * v  Vector of operations to perform.
+ * @param [in] k  Scalar to multiply by.
+ * @param [in] v  Vector of operations to perform.
  */
 static void sp_256_ecc_recode_6_4(const sp_digit* k, ecc_recode_256* v)
 {
@@ -2807,7 +2934,7 @@ static void sp_256_ecc_recode_6_4(const sp_digit* k, ecc_recode_256* v)
         }
         else if (++j < 4) {
             n = k[j];
-            y |= (word8)((n << (64 - o)) & 0x3f);
+            y |= (word8)(((sp_uint64)n << (64 - o)) & 0x3f);
             o -= 58;
             n >>= o;
         }
@@ -2822,9 +2949,9 @@ static void sp_256_ecc_recode_6_4(const sp_digit* k, ecc_recode_256* v)
 #ifndef WC_NO_CACHE_RESISTANT
 /* Touch each possible point that could be being copied.
  *
- * r      Point to copy into.
- * table  Table - start of the entries to access
- * idx    Index of entry to retrieve.
+ * @param [out] r      Point to copy into.
+ * @param [in]  table  Table - start of the entries to access
+ * @param [in]  idx    Index of entry to retrieve.
  */
 SP_NOINLINE static void sp_256_get_point_33_sm2_4(sp_point_256* r,
     const sp_point_256* table, int idx)
@@ -2898,24 +3025,21 @@ SP_NOINLINE static void sp_256_get_point_33_sm2_4(sp_point_256* r,
  * Double to push up.
  * NOT a sliding window.
  *
- * r     Resulting point.
- * g     Point to multiply.
- * k     Scalar to multiply by.
- * map   Indicates whether to convert result to affine.
- * ct    Constant time required.
- * heap  Heap to use for allocation.
- * returns MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [out] r     Resulting point.
+ * @param [in]  g     Point to multiply.
+ * @param [in]  k     Scalar to multiply by.
+ * @param [in]  map   Indicates whether to convert result to affine.
+ * @param [in]  ct    Constant time required.
+ * @param [in]  heap  Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  MEMORY_E when memory allocation fails.
  */
 static int sp_256_ecc_mulmod_win_add_sub_sm2_4(sp_point_256* r, const sp_point_256* g,
         const sp_digit* k, int map, int ct, void* heap)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_point_256* t = NULL;
-    sp_digit* tmp = NULL;
-#else
-    sp_point_256 t[33+2];
-    sp_digit tmp[2 * 4 * 6];
-#endif
+    SP_DECL_VAR_LARGE(sp_point_256, t, 33+2);
+    SP_DECL_VAR_LARGE(sp_digit, tmp, 2 * 4 * 6);
     sp_point_256* rt = NULL;
     sp_point_256* p = NULL;
     sp_digit* negy;
@@ -2927,19 +3051,8 @@ static int sp_256_ecc_mulmod_win_add_sub_sm2_4(sp_point_256* r, const sp_point_2
     (void)ct;
     (void)heap;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    t = (sp_point_256*)XMALLOC(sizeof(sp_point_256) *
-        (33+2), heap, DYNAMIC_TYPE_ECC);
-    if (t == NULL)
-        err = MEMORY_E;
-    if (err == MP_OKAY) {
-        tmp = (sp_digit*)XMALLOC(sizeof(sp_digit) * 2 * 4 * 6,
-                                 heap, DYNAMIC_TYPE_ECC);
-        if (tmp == NULL)
-            err = MEMORY_E;
-    }
-#endif
-
+    SP_ALLOC_VAR_LARGE(sp_point_256, t, 33+2, heap, DYNAMIC_TYPE_ECC);
+    SP_ALLOC_VAR_LARGE(sp_digit, tmp, 2 * 4 * 6, heap, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         rt = t + 33;
         p  = t + 33+1;
@@ -3023,10 +3136,8 @@ static int sp_256_ecc_mulmod_win_add_sub_sm2_4(sp_point_256* r, const sp_point_2
         }
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(t, heap, DYNAMIC_TYPE_ECC);
-    XFREE(tmp, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR_LARGE(t, heap, DYNAMIC_TYPE_ECC);
+    SP_FREE_VAR_LARGE(tmp, heap, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -3041,10 +3152,10 @@ typedef struct sp_table_entry_256 {
  * one.
  * Only the first point can be the same pointer as the result point.
  *
- * r  Result of addition.
- * p  First point to add.
- * q  Second point to add.
- * t  Temporary ordinate data.
+ * @param [out] r  Result of addition.
+ * @param [in]  p  First point to add.
+ * @param [in]  q  Second point to add.
+ * @param [out] t  Temporary ordinate data.
  */
 static void sp_256_proj_point_add_qz1_sm2_4(sp_point_256* r,
     const sp_point_256* p, const sp_point_256* q, sp_digit* t)
@@ -3165,8 +3276,8 @@ static void sp_256_proj_point_add_qz1_sm2_4(sp_point_256* r,
 /* Convert the projective point to affine.
  * Ordinates are in Montgomery form.
  *
- * a  Point to convert.
- * t  Temporary data.
+ * @param [in, out] a  Point to convert.
+ * @param [out]     t  Temporary data.
  */
 static void sp_256_proj_to_affine_sm2_4(sp_point_256* a, sp_digit* t)
 {
@@ -3190,19 +3301,15 @@ static void sp_256_proj_to_affine_sm2_4(sp_point_256* a, sp_digit* t)
  * 64 entries
  * 42 bits between
  *
- * a      The base point.
- * table  Place to store generated point data.
- * tmp    Temporary data.
- * heap  Heap to use for allocation.
+ * @param [in]  a      The base point.
+ * @param [out] table  Place to store generated point data.
+ * @param [out] tmp    Temporary data.
+ * @param [in]  heap   Heap to use for allocation.
  */
 static int sp_256_gen_stripe_table_sm2_4(const sp_point_256* a,
         sp_table_entry_256* table, sp_digit* tmp, void* heap)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_point_256* t = NULL;
-#else
-    sp_point_256 t[3];
-#endif
+    SP_DECL_VAR(sp_point_256, t, 3);
     sp_point_256* s1 = NULL;
     sp_point_256* s2 = NULL;
     int i;
@@ -3211,13 +3318,7 @@ static int sp_256_gen_stripe_table_sm2_4(const sp_point_256* a,
 
     (void)heap;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    t = (sp_point_256*)XMALLOC(sizeof(sp_point_256) * 3, heap,
-                                     DYNAMIC_TYPE_ECC);
-    if (t == NULL)
-        err = MEMORY_E;
-#endif
-
+    SP_ALLOC_VAR(sp_point_256, t, 3, heap, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         s1 = t + 1;
         s2 = t + 2;
@@ -3266,9 +3367,7 @@ static int sp_256_gen_stripe_table_sm2_4(const sp_point_256* a,
         }
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(t, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(t, heap, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -3278,9 +3377,9 @@ static int sp_256_gen_stripe_table_sm2_4(const sp_point_256* a,
 #ifndef WC_NO_CACHE_RESISTANT
 /* Touch each possible entry that could be being copied.
  *
- * r      Point to copy into.
- * table  Table - start of the entries to access
- * idx    Index of entry to retrieve.
+ * @param [out] r      Point to copy into.
+ * @param [in]  table  Table - start of the entries to access
+ * @param [in]  idx    Index of entry to retrieve.
  */
 SP_NOINLINE static void sp_256_get_entry_64_sm2_4(sp_point_256* r,
     const sp_table_entry_256* table, int idx)
@@ -3338,25 +3437,23 @@ SP_NOINLINE static void sp_256_get_entry_64_sm2_4(sp_point_256* r,
  * Pre-generated: products of all combinations of above.
  * 6 doubles and adds (with qz=1)
  *
- * r      Resulting point.
- * k      Scalar to multiply by.
- * table  Pre-computed table.
- * map    Indicates whether to convert result to affine.
- * ct     Constant time required.
- * heap   Heap to use for allocation.
- * returns MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [out] r      Resulting point.
+ * @param [in]  g      Point to multiply.
+ * @param [in]  table  Pre-computed table.
+ * @param [in]  k      Scalar to multiply by.
+ * @param [in]  map    Indicates whether to convert result to affine.
+ * @param [in]  ct     Constant time required.
+ * @param [in]  heap   Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  MEMORY_E when memory allocation fails.
  */
 static int sp_256_ecc_mulmod_stripe_sm2_4(sp_point_256* r, const sp_point_256* g,
         const sp_table_entry_256* table, const sp_digit* k, int map,
         int ct, void* heap)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_point_256* rt = NULL;
-    sp_digit* t = NULL;
-#else
-    sp_point_256 rt[2];
-    sp_digit t[2 * 4 * 5];
-#endif
+    SP_DECL_VAR(sp_point_256, rt, 2);
+    SP_DECL_VAR(sp_digit, t, 2 * 4 * 5);
     sp_point_256* p = NULL;
     int i;
     int j;
@@ -3370,19 +3467,8 @@ static int sp_256_ecc_mulmod_stripe_sm2_4(sp_point_256* r, const sp_point_256* g
     (void)heap;
 
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    rt = (sp_point_256*)XMALLOC(sizeof(sp_point_256) * 2, heap,
-                                      DYNAMIC_TYPE_ECC);
-    if (rt == NULL)
-        err = MEMORY_E;
-    if (err == MP_OKAY) {
-        t = (sp_digit*)XMALLOC(sizeof(sp_digit) * 2 * 4 * 5, heap,
-                               DYNAMIC_TYPE_ECC);
-        if (t == NULL)
-            err = MEMORY_E;
-    }
-#endif
-
+    SP_ALLOC_VAR(sp_point_256, rt, 2, heap, DYNAMIC_TYPE_ECC);
+    SP_ALLOC_VAR(sp_digit, t, 2 * 4 * 5, heap, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         p = rt + 1;
 
@@ -3436,10 +3522,8 @@ static int sp_256_ecc_mulmod_stripe_sm2_4(sp_point_256* r, const sp_point_256* g
         }
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(t, heap, DYNAMIC_TYPE_ECC);
-    XFREE(rt, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(rt, heap, DYNAMIC_TYPE_ECC);
+    SP_FREE_VAR(t, heap, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -3471,17 +3555,17 @@ static THREAD_LS_T int sp_cache_256_last = -1;
 /* Cache has been initialized. */
 static THREAD_LS_T int sp_cache_256_inited = 0;
 
-#ifndef HAVE_THREAD_LS
+#if !defined(SINGLE_THREADED) && !defined(HAVE_THREAD_LS)
     #ifndef WOLFSSL_MUTEX_INITIALIZER
-    static volatile int initCacheMutex_256 = 0;
+    static wolfSSL_Atomic_Uint initCacheMutex_256 = 0;
     #endif
     static wolfSSL_Mutex sp_cache_256_lock WOLFSSL_MUTEX_INITIALIZER_CLAUSE(sp_cache_256_lock);
 #endif
 
 /* Get the cache entry for the point.
  *
- * g      [in]   Point scalar multiplying.
- * cache  [out]  Cache table to use.
+ * @param [in]  g      Point scalar multiplying.
+ * @param [out] cache  Cache table to use.
  */
 static void sp_ecc_get_cache_256(const sp_point_256* g, sp_cache_256_t** cache)
 {
@@ -3540,16 +3624,19 @@ static void sp_ecc_get_cache_256(const sp_point_256* g, sp_cache_256_t** cache)
 }
 #endif /* FP_ECC */
 
+
 /* Multiply the base point of P256 by the scalar and return the result.
  * If map is true then convert result to affine coordinates.
  *
- * r     Resulting point.
- * g     Point to multiply.
- * k     Scalar to multiply by.
- * map   Indicates whether to convert result to affine.
- * ct    Constant time required.
- * heap  Heap to use for allocation.
- * returns MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [out] r     Resulting point.
+ * @param [in]  g     Point to multiply.
+ * @param [in]  k     Scalar to multiply by.
+ * @param [in]  map   Indicates whether to convert result to affine.
+ * @param [in]  ct    Constant time required.
+ * @param [in]  heap  Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  MEMORY_E when memory allocation fails.
  */
 static int sp_256_ecc_mulmod_sm2_4(sp_point_256* r, const sp_point_256* g,
         const sp_digit* k, int map, int ct, void* heap)
@@ -3557,42 +3644,52 @@ static int sp_256_ecc_mulmod_sm2_4(sp_point_256* r, const sp_point_256* g,
 #ifndef FP_ECC
     return sp_256_ecc_mulmod_win_add_sub_sm2_4(r, g, k, map, ct, heap);
 #else
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_digit* tmp;
-#else
-    sp_digit tmp[2 * 4 * 6];
-#endif
+    SP_DECL_VAR(sp_digit, tmp, 2 * 4 * 6);
     sp_cache_256_t* cache;
     int err = MP_OKAY;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    tmp = (sp_digit*)XMALLOC(sizeof(sp_digit) * 2 * 4 * 6, heap, DYNAMIC_TYPE_ECC);
-    if (tmp == NULL) {
-        err = MEMORY_E;
-    }
-#endif
-#ifndef HAVE_THREAD_LS
+    SP_ALLOC_VAR(sp_digit, tmp, 2 * 4 * 6, heap, DYNAMIC_TYPE_ECC);
+#if !defined(SINGLE_THREADED) && !defined(HAVE_THREAD_LS)
     if (err == MP_OKAY) {
-        #ifndef WOLFSSL_MUTEX_INITIALIZER
-        if (initCacheMutex_256 == 0) {
-            wc_InitMutex(&sp_cache_256_lock);
-            initCacheMutex_256 = 1;
+    #ifndef WOLFSSL_MUTEX_INITIALIZER
+        /* Lazy initialization of mutex - one atomic with three states:
+         *   0 = uninitialized, 1 = initialization in progress,
+         *   2 = initialized.
+         */
+        if (WOLFSSL_ATOMIC_LOAD(initCacheMutex_256) != 2) {
+            unsigned int expected_then_actual;
+
+            for (;;) {
+                expected_then_actual = 0;
+                if (wolfSSL_Atomic_Uint_CompareExchange(
+                        &initCacheMutex_256, &expected_then_actual,
+                        1) == 1) {
+                    /* Won race - initialize mutex. On failure, reset state
+                     * to 0 so that a later call retries. */
+                    err = wc_InitMutex(&sp_cache_256_lock);
+                    WOLFSSL_ATOMIC_STORE(initCacheMutex_256,
+                        (err == 0) ? 2U : 0U);
+                    break;
+                }
+                if (expected_then_actual == 2) {
+                    /* Another thread completed initialization. */
+                    break;
+                }
+                /* Initialization in progress in another thread. */
+                WC_RELAX_LONG_LOOP();
+            }
         }
-        #endif
-        if (wc_LockMutex(&sp_cache_256_lock) != 0) {
+    #endif
+        if ((err == MP_OKAY) && (wc_LockMutex(&sp_cache_256_lock) != 0)) {
             err = BAD_MUTEX_E;
         }
     }
-#endif /* HAVE_THREAD_LS */
+#endif /* !SINGLE_THREADED && !HAVE_THREAD_LS */
 
     if (err == MP_OKAY) {
         sp_ecc_get_cache_256(g, &cache);
         if (cache->cnt == 2)
             sp_256_gen_stripe_table_sm2_4(g, cache->table, tmp, heap);
-
-#ifndef HAVE_THREAD_LS
-        wc_UnLockMutex(&sp_cache_256_lock);
-#endif /* HAVE_THREAD_LS */
 
         if (cache->cnt < 2) {
             err = sp_256_ecc_mulmod_win_add_sub_sm2_4(r, g, k, map, ct, heap);
@@ -3601,11 +3698,12 @@ static int sp_256_ecc_mulmod_sm2_4(sp_point_256* r, const sp_point_256* g,
             err = sp_256_ecc_mulmod_stripe_sm2_4(r, g, cache->table, k,
                     map, ct, heap);
         }
+#if !defined(SINGLE_THREADED) && !defined(HAVE_THREAD_LS)
+        wc_UnLockMutex(&sp_cache_256_lock);
+#endif /* !SINGLE_THREADED && !HAVE_THREAD_LS */
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(tmp, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(tmp, heap, DYNAMIC_TYPE_ECC);
     return err;
 #endif
 }
@@ -3620,19 +3718,15 @@ static int sp_256_ecc_mulmod_sm2_4(sp_point_256* r, const sp_point_256* g,
  * 256 entries
  * 32 bits between
  *
- * a      The base point.
- * table  Place to store generated point data.
- * tmp    Temporary data.
- * heap  Heap to use for allocation.
+ * @param [in]  a      The base point.
+ * @param [out] table  Place to store generated point data.
+ * @param [out] tmp    Temporary data.
+ * @param [in]  heap   Heap to use for allocation.
  */
 static int sp_256_gen_stripe_table_sm2_4(const sp_point_256* a,
         sp_table_entry_256* table, sp_digit* tmp, void* heap)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_point_256* t = NULL;
-#else
-    sp_point_256 t[3];
-#endif
+    SP_DECL_VAR(sp_point_256, t, 3);
     sp_point_256* s1 = NULL;
     sp_point_256* s2 = NULL;
     int i;
@@ -3641,13 +3735,7 @@ static int sp_256_gen_stripe_table_sm2_4(const sp_point_256* a,
 
     (void)heap;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    t = (sp_point_256*)XMALLOC(sizeof(sp_point_256) * 3, heap,
-                                     DYNAMIC_TYPE_ECC);
-    if (t == NULL)
-        err = MEMORY_E;
-#endif
-
+    SP_ALLOC_VAR(sp_point_256, t, 3, heap, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         s1 = t + 1;
         s2 = t + 2;
@@ -3696,9 +3784,7 @@ static int sp_256_gen_stripe_table_sm2_4(const sp_point_256* a,
         }
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(t, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(t, heap, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -3708,9 +3794,9 @@ static int sp_256_gen_stripe_table_sm2_4(const sp_point_256* a,
 #ifndef WC_NO_CACHE_RESISTANT
 /* Touch each possible entry that could be being copied.
  *
- * r      Point to copy into.
- * table  Table - start of the entries to access
- * idx    Index of entry to retrieve.
+ * @param [out] r      Point to copy into.
+ * @param [in]  table  Table - start of the entries to access
+ * @param [in]  idx    Index of entry to retrieve.
  */
 SP_NOINLINE static void sp_256_get_entry_256_sm2_4(sp_point_256* r,
     const sp_table_entry_256* table, int idx)
@@ -3768,25 +3854,23 @@ SP_NOINLINE static void sp_256_get_entry_256_sm2_4(sp_point_256* r,
  * Pre-generated: products of all combinations of above.
  * 8 doubles and adds (with qz=1)
  *
- * r      Resulting point.
- * k      Scalar to multiply by.
- * table  Pre-computed table.
- * map    Indicates whether to convert result to affine.
- * ct     Constant time required.
- * heap   Heap to use for allocation.
- * returns MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [out] r      Resulting point.
+ * @param [in]  g      Point to multiply.
+ * @param [in]  table  Pre-computed table.
+ * @param [in]  k      Scalar to multiply by.
+ * @param [in]  map    Indicates whether to convert result to affine.
+ * @param [in]  ct     Constant time required.
+ * @param [in]  heap   Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  MEMORY_E when memory allocation fails.
  */
 static int sp_256_ecc_mulmod_stripe_sm2_4(sp_point_256* r, const sp_point_256* g,
         const sp_table_entry_256* table, const sp_digit* k, int map,
         int ct, void* heap)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_point_256* rt = NULL;
-    sp_digit* t = NULL;
-#else
-    sp_point_256 rt[2];
-    sp_digit t[2 * 4 * 5];
-#endif
+    SP_DECL_VAR(sp_point_256, rt, 2);
+    SP_DECL_VAR(sp_digit, t, 2 * 4 * 5);
     sp_point_256* p = NULL;
     int i;
     int j;
@@ -3800,19 +3884,8 @@ static int sp_256_ecc_mulmod_stripe_sm2_4(sp_point_256* r, const sp_point_256* g
     (void)heap;
 
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    rt = (sp_point_256*)XMALLOC(sizeof(sp_point_256) * 2, heap,
-                                      DYNAMIC_TYPE_ECC);
-    if (rt == NULL)
-        err = MEMORY_E;
-    if (err == MP_OKAY) {
-        t = (sp_digit*)XMALLOC(sizeof(sp_digit) * 2 * 4 * 5, heap,
-                               DYNAMIC_TYPE_ECC);
-        if (t == NULL)
-            err = MEMORY_E;
-    }
-#endif
-
+    SP_ALLOC_VAR(sp_point_256, rt, 2, heap, DYNAMIC_TYPE_ECC);
+    SP_ALLOC_VAR(sp_digit, t, 2 * 4 * 5, heap, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         p = rt + 1;
 
@@ -3866,10 +3939,8 @@ static int sp_256_ecc_mulmod_stripe_sm2_4(sp_point_256* r, const sp_point_256* g
         }
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(t, heap, DYNAMIC_TYPE_ECC);
-    XFREE(rt, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(rt, heap, DYNAMIC_TYPE_ECC);
+    SP_FREE_VAR(t, heap, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -3901,17 +3972,17 @@ static THREAD_LS_T int sp_cache_256_last = -1;
 /* Cache has been initialized. */
 static THREAD_LS_T int sp_cache_256_inited = 0;
 
-#ifndef HAVE_THREAD_LS
+#if !defined(SINGLE_THREADED) && !defined(HAVE_THREAD_LS)
     #ifndef WOLFSSL_MUTEX_INITIALIZER
-    static volatile int initCacheMutex_256 = 0;
+    static wolfSSL_Atomic_Uint initCacheMutex_256 = 0;
     #endif
     static wolfSSL_Mutex sp_cache_256_lock WOLFSSL_MUTEX_INITIALIZER_CLAUSE(sp_cache_256_lock);
 #endif
 
 /* Get the cache entry for the point.
  *
- * g      [in]   Point scalar multiplying.
- * cache  [out]  Cache table to use.
+ * @param [in]  g      Point scalar multiplying.
+ * @param [out] cache  Cache table to use.
  */
 static void sp_ecc_get_cache_256(const sp_point_256* g, sp_cache_256_t** cache)
 {
@@ -3970,16 +4041,19 @@ static void sp_ecc_get_cache_256(const sp_point_256* g, sp_cache_256_t** cache)
 }
 #endif /* FP_ECC */
 
+
 /* Multiply the base point of P256 by the scalar and return the result.
  * If map is true then convert result to affine coordinates.
  *
- * r     Resulting point.
- * g     Point to multiply.
- * k     Scalar to multiply by.
- * map   Indicates whether to convert result to affine.
- * ct    Constant time required.
- * heap  Heap to use for allocation.
- * returns MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [out] r     Resulting point.
+ * @param [in]  g     Point to multiply.
+ * @param [in]  k     Scalar to multiply by.
+ * @param [in]  map   Indicates whether to convert result to affine.
+ * @param [in]  ct    Constant time required.
+ * @param [in]  heap  Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  MEMORY_E when memory allocation fails.
  */
 static int sp_256_ecc_mulmod_sm2_4(sp_point_256* r, const sp_point_256* g,
         const sp_digit* k, int map, int ct, void* heap)
@@ -3987,42 +4061,52 @@ static int sp_256_ecc_mulmod_sm2_4(sp_point_256* r, const sp_point_256* g,
 #ifndef FP_ECC
     return sp_256_ecc_mulmod_win_add_sub_sm2_4(r, g, k, map, ct, heap);
 #else
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_digit* tmp;
-#else
-    sp_digit tmp[2 * 4 * 6];
-#endif
+    SP_DECL_VAR(sp_digit, tmp, 2 * 4 * 6);
     sp_cache_256_t* cache;
     int err = MP_OKAY;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    tmp = (sp_digit*)XMALLOC(sizeof(sp_digit) * 2 * 4 * 6, heap, DYNAMIC_TYPE_ECC);
-    if (tmp == NULL) {
-        err = MEMORY_E;
-    }
-#endif
-#ifndef HAVE_THREAD_LS
+    SP_ALLOC_VAR(sp_digit, tmp, 2 * 4 * 6, heap, DYNAMIC_TYPE_ECC);
+#if !defined(SINGLE_THREADED) && !defined(HAVE_THREAD_LS)
     if (err == MP_OKAY) {
-        #ifndef WOLFSSL_MUTEX_INITIALIZER
-        if (initCacheMutex_256 == 0) {
-            wc_InitMutex(&sp_cache_256_lock);
-            initCacheMutex_256 = 1;
+    #ifndef WOLFSSL_MUTEX_INITIALIZER
+        /* Lazy initialization of mutex - one atomic with three states:
+         *   0 = uninitialized, 1 = initialization in progress,
+         *   2 = initialized.
+         */
+        if (WOLFSSL_ATOMIC_LOAD(initCacheMutex_256) != 2) {
+            unsigned int expected_then_actual;
+
+            for (;;) {
+                expected_then_actual = 0;
+                if (wolfSSL_Atomic_Uint_CompareExchange(
+                        &initCacheMutex_256, &expected_then_actual,
+                        1) == 1) {
+                    /* Won race - initialize mutex. On failure, reset state
+                     * to 0 so that a later call retries. */
+                    err = wc_InitMutex(&sp_cache_256_lock);
+                    WOLFSSL_ATOMIC_STORE(initCacheMutex_256,
+                        (err == 0) ? 2U : 0U);
+                    break;
+                }
+                if (expected_then_actual == 2) {
+                    /* Another thread completed initialization. */
+                    break;
+                }
+                /* Initialization in progress in another thread. */
+                WC_RELAX_LONG_LOOP();
+            }
         }
-        #endif
-        if (wc_LockMutex(&sp_cache_256_lock) != 0) {
+    #endif
+        if ((err == MP_OKAY) && (wc_LockMutex(&sp_cache_256_lock) != 0)) {
             err = BAD_MUTEX_E;
         }
     }
-#endif /* HAVE_THREAD_LS */
+#endif /* !SINGLE_THREADED && !HAVE_THREAD_LS */
 
     if (err == MP_OKAY) {
         sp_ecc_get_cache_256(g, &cache);
         if (cache->cnt == 2)
             sp_256_gen_stripe_table_sm2_4(g, cache->table, tmp, heap);
-
-#ifndef HAVE_THREAD_LS
-        wc_UnLockMutex(&sp_cache_256_lock);
-#endif /* HAVE_THREAD_LS */
 
         if (cache->cnt < 2) {
             err = sp_256_ecc_mulmod_win_add_sub_sm2_4(r, g, k, map, ct, heap);
@@ -4031,11 +4115,12 @@ static int sp_256_ecc_mulmod_sm2_4(sp_point_256* r, const sp_point_256* g,
             err = sp_256_ecc_mulmod_stripe_sm2_4(r, g, cache->table, k,
                     map, ct, heap);
         }
+#if !defined(SINGLE_THREADED) && !defined(HAVE_THREAD_LS)
+        wc_UnLockMutex(&sp_cache_256_lock);
+#endif /* !SINGLE_THREADED && !HAVE_THREAD_LS */
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(tmp, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(tmp, heap, DYNAMIC_TYPE_ECC);
     return err;
 #endif
 }
@@ -4044,38 +4129,24 @@ static int sp_256_ecc_mulmod_sm2_4(sp_point_256* r, const sp_point_256* g,
 /* Multiply the point by the scalar and return the result.
  * If map is true then convert result to affine coordinates.
  *
- * km    Scalar to multiply by.
- * p     Point to multiply.
- * r     Resulting point.
- * map   Indicates whether to convert result to affine.
- * heap  Heap to use for allocation.
- * returns MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [in]  km    Scalar to multiply by.
+ * @param [in]  gm    Point to multiply.
+ * @param [out] r     Resulting point.
+ * @param [in]  map   Indicates whether to convert result to affine.
+ * @param [in]  heap  Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  MEMORY_E when memory allocation fails.
  */
 int sp_ecc_mulmod_sm2_256(const mp_int* km, const ecc_point* gm, ecc_point* r,
         int map, void* heap)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_point_256* point = NULL;
-    sp_digit* k = NULL;
-#else
-    sp_point_256 point[1];
-    sp_digit k[4];
-#endif
+    SP_DECL_VAR(sp_point_256, point, 1);
+    SP_DECL_VAR(sp_digit, k, 4);
     int err = MP_OKAY;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    point = (sp_point_256*)XMALLOC(sizeof(sp_point_256), heap,
-                                         DYNAMIC_TYPE_ECC);
-    if (point == NULL)
-        err = MEMORY_E;
-    if (err == MP_OKAY) {
-        k = (sp_digit*)XMALLOC(sizeof(sp_digit) * 4, heap,
-                               DYNAMIC_TYPE_ECC);
-        if (k == NULL)
-            err = MEMORY_E;
-    }
-#endif
-
+    SP_ALLOC_VAR(sp_point_256, point, 1, heap, DYNAMIC_TYPE_ECC);
+    SP_ALLOC_VAR(sp_digit, k, 4, heap, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         sp_256_from_mp(k, 4, km);
         sp_256_point_from_ecc_point_4(point, gm);
@@ -4086,10 +4157,8 @@ int sp_ecc_mulmod_sm2_256(const mp_int* km, const ecc_point* gm, ecc_point* r,
         err = sp_256_point_to_ecc_point_4(point, r);
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    XFREE(point, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(k, heap, DYNAMIC_TYPE_ECC);
+    SP_FREE_VAR(point, heap, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -4097,43 +4166,28 @@ int sp_ecc_mulmod_sm2_256(const mp_int* km, const ecc_point* gm, ecc_point* r,
 /* Multiply the point by the scalar, add point a and return the result.
  * If map is true then convert result to affine coordinates.
  *
- * km      Scalar to multiply by.
- * p       Point to multiply.
- * am      Point to add to scalar multiply result.
- * inMont  Point to add is in montgomery form.
- * r       Resulting point.
- * map     Indicates whether to convert result to affine.
- * heap    Heap to use for allocation.
- * returns MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [in]  km      Scalar to multiply by.
+ * @param [in]  gm      Point to multiply.
+ * @param [in]  am      Point to add to scalar multiply result.
+ * @param [in]  inMont  Point to add is in montgomery form.
+ * @param [out] r       Resulting point.
+ * @param [in]  map     Indicates whether to convert result to affine.
+ * @param [in]  heap    Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  MEMORY_E when memory allocation fails.
  */
 int sp_ecc_mulmod_add_sm2_256(const mp_int* km, const ecc_point* gm,
     const ecc_point* am, int inMont, ecc_point* r, int map, void* heap)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_point_256* point = NULL;
-    sp_digit* k = NULL;
-#else
-    sp_point_256 point[2];
-    sp_digit k[4 + 4 * 2 * 6];
-#endif
+    SP_DECL_VAR(sp_point_256, point, 2);
+    SP_DECL_VAR(sp_digit, k, 4 + 4 * 2 * 6);
     sp_point_256* addP = NULL;
     sp_digit* tmp = NULL;
     int err = MP_OKAY;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    point = (sp_point_256*)XMALLOC(sizeof(sp_point_256) * 2, heap,
-                                         DYNAMIC_TYPE_ECC);
-    if (point == NULL)
-        err = MEMORY_E;
-    if (err == MP_OKAY) {
-        k = (sp_digit*)XMALLOC(
-            sizeof(sp_digit) * (4 + 4 * 2 * 6), heap,
-            DYNAMIC_TYPE_ECC);
-        if (k == NULL)
-            err = MEMORY_E;
-    }
-#endif
-
+    SP_ALLOC_VAR(sp_point_256, point, 2, heap, DYNAMIC_TYPE_ECC);
+    SP_ALLOC_VAR(sp_digit, k, 4 + 4 * 2 * 6, heap, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         addP = point + 1;
         tmp = k + 4;
@@ -4164,10 +4218,8 @@ int sp_ecc_mulmod_add_sm2_256(const mp_int* km, const ecc_point* gm,
         err = sp_256_point_to_ecc_point_4(point, r);
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    XFREE(point, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(k, heap, DYNAMIC_TYPE_ECC);
+    SP_FREE_VAR(point, heap, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -4507,12 +4559,14 @@ static const sp_table_entry_256 p256_sm2_table[64] = {
  * Pre-generated: products of all combinations of above.
  * 6 doubles and adds (with qz=1)
  *
- * r     Resulting point.
- * k     Scalar to multiply by.
- * map   Indicates whether to convert result to affine.
- * ct    Constant time required.
- * heap  Heap to use for allocation.
- * returns MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [out] r     Resulting point.
+ * @param [in]  k     Scalar to multiply by.
+ * @param [in]  map   Indicates whether to convert result to affine.
+ * @param [in]  ct    Constant time required.
+ * @param [in]  heap  Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  MEMORY_E when memory allocation fails.
  */
 static int sp_256_ecc_mulmod_base_sm2_4(sp_point_256* r, const sp_digit* k,
         int map, int ct, void* heap)
@@ -5815,12 +5869,14 @@ static const sp_table_entry_256 p256_sm2_table[256] = {
  * Pre-generated: products of all combinations of above.
  * 8 doubles and adds (with qz=1)
  *
- * r     Resulting point.
- * k     Scalar to multiply by.
- * map   Indicates whether to convert result to affine.
- * ct    Constant time required.
- * heap  Heap to use for allocation.
- * returns MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [out] r     Resulting point.
+ * @param [in]  k     Scalar to multiply by.
+ * @param [in]  map   Indicates whether to convert result to affine.
+ * @param [in]  ct    Constant time required.
+ * @param [in]  heap  Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  MEMORY_E when memory allocation fails.
  */
 static int sp_256_ecc_mulmod_base_sm2_4(sp_point_256* r, const sp_digit* k,
         int map, int ct, void* heap)
@@ -5860,8 +5916,8 @@ static const word8 recode_neg_4_7[130] = {
 /* Recode the scalar for multiplication using pre-computed values and
  * subtraction.
  *
- * k  Scalar to multiply by.
- * v  Vector of operations to perform.
+ * @param [in] k  Scalar to multiply by.
+ * @param [in] v  Vector of operations to perform.
  */
 static void sp_256_ecc_recode_7_4(const sp_digit* k, ecc_recode_256* v)
 {
@@ -5890,7 +5946,7 @@ static void sp_256_ecc_recode_7_4(const sp_digit* k, ecc_recode_256* v)
         }
         else if (++j < 4) {
             n = k[j];
-            y |= (word8)((n << (64 - o)) & 0x7f);
+            y |= (word8)(((sp_uint64)n << (64 - o)) & 0x7f);
             o -= 57;
             n >>= o;
         }
@@ -5905,9 +5961,9 @@ static void sp_256_ecc_recode_7_4(const sp_digit* k, ecc_recode_256* v)
 #ifndef WC_NO_CACHE_RESISTANT
 /* Touch each possible entry that could be being copied.
  *
- * r      Point to copy into.
- * table  Table - start of the entries to access
- * idx    Index of entry to retrieve.
+ * @param [out] r      Point to copy into.
+ * @param [in]  table  Table - start of the entries to access
+ * @param [in]  idx    Index of entry to retrieve.
  */
 SP_NOINLINE static void sp_256_get_entry_65_sm2_4(sp_point_256* r,
     const sp_table_entry_256* table, int idx)
@@ -17918,26 +17974,23 @@ static const sp_table_entry_256 p256_sm2_table[2405] = {
  * Width between powers is 7 bits.
  * Accumulate into the result.
  *
- * r      Resulting point.
- * g      Point to scalar multiply.
- * k      Scalar to multiply by.
- * table  Pre-computed table of points.
- * map    Indicates whether to convert result to affine.
- * ct     Constant time required.
- * heap   Heap to use for allocation.
- * returns MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [out] r      Resulting point.
+ * @param [in]  g      Point to scalar multiply.
+ * @param [in]  k      Scalar to multiply by.
+ * @param [in]  table  Pre-computed table of points.
+ * @param [in]  map    Indicates whether to convert result to affine.
+ * @param [in]  ct     Constant time required.
+ * @param [in]  heap   Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  MEMORY_E when memory allocation fails.
  */
 static int sp_256_ecc_mulmod_add_only_sm2_4(sp_point_256* r, const sp_point_256* g,
         const sp_table_entry_256* table, const sp_digit* k, int map,
         int ct, void* heap)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_point_256* rt = NULL;
-    sp_digit* tmp = NULL;
-#else
-    sp_point_256 rt[2];
-    sp_digit tmp[2 * 4 * 5];
-#endif
+    SP_DECL_VAR(sp_point_256, rt, 2);
+    SP_DECL_VAR(sp_digit, tmp, 2 * 4 * 5);
     sp_point_256* p = NULL;
     sp_digit* negy = NULL;
     int i;
@@ -17949,19 +18002,8 @@ static int sp_256_ecc_mulmod_add_only_sm2_4(sp_point_256* r, const sp_point_256*
     (void)heap;
 
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    rt = (sp_point_256*)XMALLOC(sizeof(sp_point_256) * 2, heap,
-                                     DYNAMIC_TYPE_ECC);
-    if (rt == NULL)
-        err = MEMORY_E;
-    if (err == MP_OKAY) {
-        tmp = (sp_digit*)XMALLOC(sizeof(sp_digit) * 2 * 4 * 5, heap,
-                                 DYNAMIC_TYPE_ECC);
-        if (tmp == NULL)
-            err = MEMORY_E;
-    }
-#endif
-
+    SP_ALLOC_VAR(sp_point_256, rt, 2, heap, DYNAMIC_TYPE_ECC);
+    SP_ALLOC_VAR(sp_digit, tmp, 2 * 4 * 5, heap, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         negy = tmp;
         p = rt + 1;
@@ -18010,18 +18052,8 @@ static int sp_256_ecc_mulmod_add_only_sm2_4(sp_point_256* r, const sp_point_256*
         }
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    if (tmp != NULL)
-#endif
-    {
-        ForceZero(tmp, sizeof(sp_digit) * 2 * 4 * 5);
-    #ifdef WOLFSSL_SP_SMALL_STACK
-        XFREE(tmp, heap, DYNAMIC_TYPE_ECC);
-    #endif
-    }
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(rt, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_ZEROFREE_VAR(sp_digit, tmp, 2 * 4 * 5, heap, DYNAMIC_TYPE_ECC);
+    SP_FREE_VAR(rt, heap, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -18029,12 +18061,14 @@ static int sp_256_ecc_mulmod_add_only_sm2_4(sp_point_256* r, const sp_point_256*
 /* Multiply the base point of P256 by the scalar and return the result.
  * If map is true then convert result to affine coordinates.
  *
- * r     Resulting point.
- * k     Scalar to multiply by.
- * map   Indicates whether to convert result to affine.
- * ct    Constant time required.
- * heap  Heap to use for allocation.
- * returns MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [out] r     Resulting point.
+ * @param [in]  k     Scalar to multiply by.
+ * @param [in]  map   Indicates whether to convert result to affine.
+ * @param [in]  ct    Constant time required.
+ * @param [in]  heap  Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  MEMORY_E when memory allocation fails.
  */
 static int sp_256_ecc_mulmod_base_sm2_4(sp_point_256* r, const sp_digit* k,
         int map, int ct, void* heap)
@@ -18047,36 +18081,22 @@ static int sp_256_ecc_mulmod_base_sm2_4(sp_point_256* r, const sp_digit* k,
 /* Multiply the base point of P256 by the scalar and return the result.
  * If map is true then convert result to affine coordinates.
  *
- * km    Scalar to multiply by.
- * r     Resulting point.
- * map   Indicates whether to convert result to affine.
- * heap  Heap to use for allocation.
- * returns MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [in]  km    Scalar to multiply by.
+ * @param [out] r     Resulting point.
+ * @param [in]  map   Indicates whether to convert result to affine.
+ * @param [in]  heap  Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  MEMORY_E when memory allocation fails.
  */
 int sp_ecc_mulmod_base_sm2_256(const mp_int* km, ecc_point* r, int map, void* heap)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_point_256* point = NULL;
-    sp_digit* k = NULL;
-#else
-    sp_point_256  point[1];
-    sp_digit k[4];
-#endif
+    SP_DECL_VAR(sp_point_256, point, 1);
+    SP_DECL_VAR(sp_digit, k, 4);
     int err = MP_OKAY;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    point = (sp_point_256*)XMALLOC(sizeof(sp_point_256), heap,
-                                         DYNAMIC_TYPE_ECC);
-    if (point == NULL)
-        err = MEMORY_E;
-    if (err == MP_OKAY) {
-        k = (sp_digit*)XMALLOC(sizeof(sp_digit) * 4, heap,
-                               DYNAMIC_TYPE_ECC);
-        if (k == NULL)
-            err = MEMORY_E;
-    }
-#endif
-
+    SP_ALLOC_VAR(sp_point_256, point, 1, heap, DYNAMIC_TYPE_ECC);
+    SP_ALLOC_VAR(sp_digit, k, 4, heap, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         sp_256_from_mp(k, 4, km);
 
@@ -18086,10 +18106,8 @@ int sp_ecc_mulmod_base_sm2_256(const mp_int* km, ecc_point* r, int map, void* he
         err = sp_256_point_to_ecc_point_4(point, r);
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    XFREE(point, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(k, heap, DYNAMIC_TYPE_ECC);
+    SP_FREE_VAR(point, heap, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -18097,42 +18115,27 @@ int sp_ecc_mulmod_base_sm2_256(const mp_int* km, ecc_point* r, int map, void* he
 /* Multiply the base point of P256 by the scalar, add point a and return
  * the result. If map is true then convert result to affine coordinates.
  *
- * km      Scalar to multiply by.
- * am      Point to add to scalar multiply result.
- * inMont  Point to add is in montgomery form.
- * r       Resulting point.
- * map     Indicates whether to convert result to affine.
- * heap    Heap to use for allocation.
- * returns MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [in]  km      Scalar to multiply by.
+ * @param [in]  am      Point to add to scalar multiply result.
+ * @param [in]  inMont  Point to add is in montgomery form.
+ * @param [out] r       Resulting point.
+ * @param [in]  map     Indicates whether to convert result to affine.
+ * @param [in]  heap    Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  MEMORY_E when memory allocation fails.
  */
 int sp_ecc_mulmod_base_add_sm2_256(const mp_int* km, const ecc_point* am,
         int inMont, ecc_point* r, int map, void* heap)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_point_256* point = NULL;
-    sp_digit* k = NULL;
-#else
-    sp_point_256 point[2];
-    sp_digit k[4 + 4 * 2 * 6];
-#endif
+    SP_DECL_VAR(sp_point_256, point, 2);
+    SP_DECL_VAR(sp_digit, k, 4 + 4 * 2 * 6);
     sp_point_256* addP = NULL;
     sp_digit* tmp = NULL;
     int err = MP_OKAY;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    point = (sp_point_256*)XMALLOC(sizeof(sp_point_256) * 2, heap,
-                                         DYNAMIC_TYPE_ECC);
-    if (point == NULL)
-        err = MEMORY_E;
-    if (err == MP_OKAY) {
-        k = (sp_digit*)XMALLOC(
-            sizeof(sp_digit) * (4 + 4 * 2 * 6),
-            heap, DYNAMIC_TYPE_ECC);
-        if (k == NULL)
-            err = MEMORY_E;
-    }
-#endif
-
+    SP_ALLOC_VAR(sp_point_256, point, 2, NULL, DYNAMIC_TYPE_ECC);
+    SP_ALLOC_VAR(sp_digit, k, 4 + 4 * 2 * 6, NULL, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         addP = point + 1;
         tmp = k + 4;
@@ -18162,10 +18165,8 @@ int sp_ecc_mulmod_base_add_sm2_256(const mp_int* km, const ecc_point* am,
         err = sp_256_point_to_ecc_point_4(point, r);
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    XFREE(point, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(k, NULL, DYNAMIC_TYPE_ECC);
+    SP_FREE_VAR(point, NULL, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -18173,9 +18174,10 @@ int sp_ecc_mulmod_base_add_sm2_256(const mp_int* km, const ecc_point* am,
 #if defined(WOLFSSL_VALIDATE_ECC_KEYGEN) || defined(HAVE_ECC_SIGN) || \
                                                         defined(HAVE_ECC_VERIFY)
 #endif /* WOLFSSL_VALIDATE_ECC_KEYGEN | HAVE_ECC_SIGN | HAVE_ECC_VERIFY */
+#ifndef WC_NO_RNG
 /* Add 1 to a. (a = a + 1)
  *
- * a  A single precision integer.
+ * @param [in, out] a  A single precision integer.
  */
 static void sp_256_add_one_sm2_4(sp_digit* a)
 {
@@ -18195,12 +18197,13 @@ static void sp_256_add_one_sm2_4(sp_digit* a)
     );
 }
 
+#endif
 /* Read big endian unsigned byte array into r.
  *
- * r  A single precision integer.
- * size  Maximum number of bytes to convert
- * a  Byte array.
- * n  Number of bytes in array to read.
+ * @param [out] r     A single precision integer.
+ * @param [in]  size  Maximum number of bytes to convert
+ * @param [in]  a     Byte array.
+ * @param [in]  n     Number of bytes in array to read.
  */
 static void sp_256_from_bin(sp_digit* r, int size, const byte* a, int n)
 {
@@ -18213,7 +18216,7 @@ static void sp_256_from_bin(sp_digit* r, int size, const byte* a, int n)
         "sub	x4, x4, 8\n\t"
         "subs	x6, %[n], 8\n\t"
         "mov	x7, xzr\n\t"
-        "blt	2f\n\t"
+        "b.lt	2f\n\t"
         /* Put in multiples of 8 bytes. */
         "1:\n\t"
         "ldr	x8, [x4], -8\n\t"
@@ -18225,7 +18228,7 @@ static void sp_256_from_bin(sp_digit* r, int size, const byte* a, int n)
         "add	x7, x7, 8\n\t"
         "b.ge	1b\n\t"
         "2:\n\t"
-        "cmp	x6, -7\n\t"
+        "cmn	x6, 7\n\t"
         "b.lt	20f\n\t"
         /* Put in less than 8 bytes. */
     #ifdef LITTLE_ENDIAN_ORDER
@@ -18236,13 +18239,13 @@ static void sp_256_from_bin(sp_digit* r, int size, const byte* a, int n)
         "add	x7, x7, 8\n\t"
         "add	x4, x4, 7\n\t"
         "b.eq	17f\n\t"
-        "cmp	x6, -5\n\t"
+        "cmn	x6, 5\n\t"
         "b.lt	16f\n\t"
         "b.eq	15f\n\t"
-        "cmp	x6, -3\n\t"
+        "cmn	x6, 3\n\t"
         "b.lt	14f\n\t"
         "b.eq	13f\n\t"
-        "cmp	x6, -2\n\t"
+        "cmn	x6, 2\n\t"
         "b.eq	12f\n\t"
         "ldrb	w8, [x4], -1\n\t"
     #ifdef LITTLE_ENDIAN_ORDER
@@ -18310,10 +18313,12 @@ static void sp_256_from_bin(sp_digit* r, int size, const byte* a, int n)
 
 /* Generates a scalar that is in the range 1..order-1.
  *
- * rng  Random number generator.
- * k    Scalar value.
- * returns RNG failures, MEMORY_E when memory allocation fails and
- * MP_OKAY on success.
+ * @param [in] rng  Random number generator.
+ * @param [in] k    Scalar value.
+ *
+ * @return  MP_OKAY on success.
+ * @return  RNG failures.
+ * @return  MEMORY_E when memory allocation fails.
  */
 static int sp_256_ecc_gen_k_sm2_4(WC_RNG* rng, sp_digit* k)
 {
@@ -18343,26 +18348,24 @@ static int sp_256_ecc_gen_k_sm2_4(WC_RNG* rng, sp_digit* k)
 
 /* Makes a random EC key pair.
  *
- * rng   Random number generator.
- * priv  Generated private value.
- * pub   Generated public point.
- * heap  Heap to use for allocation.
- * returns ECC_INF_E when the point does not have the correct order, RNG
- * failures, MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [in]  rng   Random number generator.
+ * @param [out] priv  Generated private value.
+ * @param [out] pub   Generated public point.
+ * @param [in]  heap  Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  ECC_INF_E when the point does not have the correct order.
+ * @return  RNG failures.
+ * @return  MEMORY_E when memory allocation fails.
  */
 int sp_ecc_make_key_sm2_256(WC_RNG* rng, mp_int* priv, ecc_point* pub, void* heap)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_point_256* point = NULL;
-    sp_digit* k = NULL;
+#ifdef WOLFSSL_VALIDATE_ECC_KEYGEN
+    SP_DECL_VAR(sp_point_256, point, 2);
 #else
-    #ifdef WOLFSSL_VALIDATE_ECC_KEYGEN
-    sp_point_256 point[2];
-    #else
-    sp_point_256 point[1];
-    #endif
-    sp_digit k[4];
+    SP_DECL_VAR(sp_point_256, point, 1);
 #endif
+    SP_DECL_VAR(sp_digit, k, 4);
 #ifdef WOLFSSL_VALIDATE_ECC_KEYGEN
     sp_point_256* infinity = NULL;
 #endif
@@ -18371,22 +18374,12 @@ int sp_ecc_make_key_sm2_256(WC_RNG* rng, mp_int* priv, ecc_point* pub, void* hea
 
     (void)heap;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    #ifdef WOLFSSL_VALIDATE_ECC_KEYGEN
-    point = (sp_point_256*)XMALLOC(sizeof(sp_point_256) * 2, heap, DYNAMIC_TYPE_ECC);
-    #else
-    point = (sp_point_256*)XMALLOC(sizeof(sp_point_256), heap, DYNAMIC_TYPE_ECC);
-    #endif
-    if (point == NULL)
-        err = MEMORY_E;
-    if (err == MP_OKAY) {
-        k = (sp_digit*)XMALLOC(sizeof(sp_digit) * 4, heap,
-                               DYNAMIC_TYPE_ECC);
-        if (k == NULL)
-            err = MEMORY_E;
-    }
+#ifdef WOLFSSL_VALIDATE_ECC_KEYGEN
+    SP_ALLOC_VAR(sp_point_256, point, 2, heap, DYNAMIC_TYPE_ECC);
+#else
+    SP_ALLOC_VAR(sp_point_256, point, 1, heap, DYNAMIC_TYPE_ECC);
 #endif
-
+    SP_ALLOC_VAR(sp_digit, k, 4, heap, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
     #ifdef WOLFSSL_VALIDATE_ECC_KEYGEN
         infinity = point + 1;
@@ -18400,7 +18393,7 @@ int sp_ecc_make_key_sm2_256(WC_RNG* rng, mp_int* priv, ecc_point* pub, void* hea
 
 #ifdef WOLFSSL_VALIDATE_ECC_KEYGEN
     if (err == MP_OKAY) {
-            err = sp_256_ecc_mulmod_4(infinity, point, p256_sm2_order, 1, 1, NULL);
+            err = sp_256_ecc_mulmod_sm2_4(infinity, point, p256_sm2_order, 1, 1, NULL);
     }
     if (err == MP_OKAY) {
         if (sp_256_iszero_4(point->x) || sp_256_iszero_4(point->y)) {
@@ -18416,11 +18409,9 @@ int sp_ecc_make_key_sm2_256(WC_RNG* rng, mp_int* priv, ecc_point* pub, void* hea
         err = sp_256_point_to_ecc_point_4(point, pub);
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(k, heap, DYNAMIC_TYPE_ECC);
+    SP_FREE_VAR(k, heap, DYNAMIC_TYPE_ECC);
     /* point is not sensitive, so no need to zeroize */
-    XFREE(point, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(point, heap, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -18428,7 +18419,7 @@ int sp_ecc_make_key_sm2_256(WC_RNG* rng, mp_int* priv, ecc_point* pub, void* hea
 #ifdef WOLFSSL_SP_NONBLOCK
 typedef struct sp_ecc_key_gen_256_ctx {
     int state;
-    sp_256_ecc_mulmod_4_ctx mulmod_ctx;
+    sp_256_ecc_mulmod_sm2_4_ctx mulmod_ctx;
     sp_digit k[4];
 #ifdef WOLFSSL_VALIDATE_ECC_KEYGEN
     sp_point_256  point[2];
@@ -18437,6 +18428,23 @@ typedef struct sp_ecc_key_gen_256_ctx {
 #endif /* WOLFSSL_VALIDATE_ECC_KEYGEN */
 } sp_ecc_key_gen_256_ctx;
 
+/* Makes a random EC key pair.
+ *
+ * Non-blocking version.  Call repeatedly until it does not return
+ * FP_WOULDBLOCK.  State is saved and restored through sp_ctx.
+ *
+ * @param [in, out] sp_ctx  Context to save state in for non-blocking calls.
+ * @param [in]      rng     Random number generator.
+ * @param [out]     priv    Generated private value.
+ * @param [out]     pub     Generated public point.
+ * @param [in]      heap    Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  FP_WOULDBLOCK while more work remains.
+ * @return  ECC_INF_E when the point does not have the correct order.
+ * @return  RNG failures.
+ * @return  MEMORY_E when memory allocation fails.
+ */
 int sp_ecc_make_key_256_nb(sp_ecc_ctx_t* sp_ctx, WC_RNG* rng, mp_int* priv,
     ecc_point* pub, void* heap)
 {
@@ -18452,14 +18460,14 @@ int sp_ecc_make_key_256_nb(sp_ecc_ctx_t* sp_ctx, WC_RNG* rng, mp_int* priv,
 
     switch (ctx->state) {
         case 0:
-            err = sp_256_ecc_gen_k_4(rng, ctx->k);
+            err = sp_256_ecc_gen_k_sm2_4(rng, ctx->k);
             if (err == MP_OKAY) {
                 err = FP_WOULDBLOCK;
                 ctx->state = 1;
             }
             break;
         case 1:
-            err = sp_256_ecc_mulmod_base_4_nb((sp_ecc_ctx_t*)&ctx->mulmod_ctx,
+            err = sp_256_ecc_mulmod_base_sm2_4_nb((sp_ecc_ctx_t*)&ctx->mulmod_ctx,
                       ctx->point, ctx->k, 1, 1, heap);
             if (err == MP_OKAY) {
                 err = FP_WOULDBLOCK;
@@ -18473,7 +18481,7 @@ int sp_ecc_make_key_256_nb(sp_ecc_ctx_t* sp_ctx, WC_RNG* rng, mp_int* priv,
             break;
     #ifdef WOLFSSL_VALIDATE_ECC_KEYGEN
         case 2:
-            err = sp_256_ecc_mulmod_4_nb((sp_ecc_ctx_t*)&ctx->mulmod_ctx,
+            err = sp_256_ecc_mulmod_sm2_4_nb((sp_ecc_ctx_t*)&ctx->mulmod_ctx,
                       infinity, ctx->point, p256_sm2_order, 1, 1);
             if (err == MP_OKAY) {
                 if (sp_256_iszero_4(ctx->point->x) ||
@@ -18507,8 +18515,8 @@ int sp_ecc_make_key_256_nb(sp_ecc_ctx_t* sp_ctx, WC_RNG* rng, mp_int* priv,
 /* Write r as big endian to byte array.
  * Fixed length number of bytes written: 32
  *
- * r  A single precision integer.
- * a  Byte array.
+ * @param [out] r  A single precision integer.
+ * @param [in]  a  Byte array.
  */
 static void sp_256_to_bin_4(sp_digit* r, byte* a)
 {
@@ -18532,46 +18540,30 @@ static void sp_256_to_bin_4(sp_digit* r, byte* a)
 /* Multiply the point by the scalar and serialize the X ordinate.
  * The number is 0 padded to maximum size on output.
  *
- * priv    Scalar to multiply the point by.
- * pub     Point to multiply.
- * out     Buffer to hold X ordinate.
- * outLen  On entry, size of the buffer in bytes.
- *         On exit, length of data in buffer in bytes.
- * heap    Heap to use for allocation.
- * returns BUFFER_E if the buffer is to small for output size,
- * MEMORY_E when memory allocation fails and MP_OKAY on success.
+ * @param [in]      priv    Scalar to multiply the point by.
+ * @param [in]      pub     Point to multiply.
+ * @param [out]     out     Buffer to hold X ordinate.
+ * @param [in, out] outLen  On entry, size of the buffer in bytes.
+ *                          On exit, length of data in buffer in bytes.
+ * @param [in]      heap    Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  BUFFER_E when the buffer is too small for output size.
+ * @return  MEMORY_E when memory allocation fails.
  */
 int sp_ecc_secret_gen_sm2_256(const mp_int* priv, const ecc_point* pub, byte* out,
                           word32* outLen, void* heap)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_point_256* point = NULL;
-    sp_digit* k = NULL;
-#else
-    sp_point_256 point[1];
-    sp_digit k[4];
-#endif
+    SP_DECL_VAR(sp_point_256, point, 1);
+    SP_DECL_VAR(sp_digit, k, 4);
     int err = MP_OKAY;
 
     if (*outLen < 32U) {
         err = BUFFER_E;
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    if (err == MP_OKAY) {
-        point = (sp_point_256*)XMALLOC(sizeof(sp_point_256), heap,
-                                         DYNAMIC_TYPE_ECC);
-        if (point == NULL)
-            err = MEMORY_E;
-    }
-    if (err == MP_OKAY) {
-        k = (sp_digit*)XMALLOC(sizeof(sp_digit) * 4, heap,
-                               DYNAMIC_TYPE_ECC);
-        if (k == NULL)
-            err = MEMORY_E;
-    }
-#endif
-
+    SP_ALLOC_VAR(sp_point_256, point, 1, heap, DYNAMIC_TYPE_ECC);
+    SP_ALLOC_VAR(sp_digit, k, 4, heap, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         sp_256_from_mp(k, 4, priv);
         sp_256_point_from_ecc_point_4(point, pub);
@@ -18582,10 +18574,8 @@ int sp_ecc_secret_gen_sm2_256(const mp_int* priv, const ecc_point* pub, byte* ou
         *outLen = 32;
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(k, heap, DYNAMIC_TYPE_ECC);
-    XFREE(point, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(k, heap, DYNAMIC_TYPE_ECC);
+    SP_FREE_VAR(point, heap, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -18594,12 +18584,31 @@ int sp_ecc_secret_gen_sm2_256(const mp_int* priv, const ecc_point* pub, byte* ou
 typedef struct sp_ecc_sec_gen_256_ctx {
     int state;
     union {
-        sp_256_ecc_mulmod_4_ctx mulmod_ctx;
+        sp_256_ecc_mulmod_sm2_4_ctx mulmod_ctx;
     };
     sp_digit k[4];
     sp_point_256 point;
 } sp_ecc_sec_gen_256_ctx;
 
+/* Multiply the point by the scalar and serialize the X ordinate.
+ * The number is 0 padded to maximum size on output.
+ *
+ * Non-blocking version.  Call repeatedly until it does not return
+ * FP_WOULDBLOCK.  State is saved and restored through sp_ctx.
+ *
+ * @param [in, out] sp_ctx  Context to save state in for non-blocking calls.
+ * @param [in]      priv    Scalar to multiply the point by.
+ * @param [in]      pub     Point to multiply.
+ * @param [out]     out     Buffer to hold X ordinate.
+ * @param [in, out] outLen  On entry, size of the buffer in bytes.
+ *                          On exit, length of data in buffer in bytes.
+ * @param [in]      heap    Heap to use for allocation.
+ *
+ * @return  MP_OKAY on success.
+ * @return  FP_WOULDBLOCK while more work remains.
+ * @return  BUFFER_E when the buffer is too small for output size.
+ * @return  MEMORY_E when memory allocation fails.
+ */
 int sp_ecc_secret_gen_256_nb(sp_ecc_ctx_t* sp_ctx, const mp_int* priv,
     const ecc_point* pub, byte* out, word32* outLen, void* heap)
 {
@@ -18649,10 +18658,11 @@ int sp_ecc_secret_gen_256_nb(sp_ecc_ctx_t* sp_ctx, const mp_int* priv,
 /* Conditionally add a and b using the mask m.
  * m is -1 to add and 0 when not.
  *
- * r  A single precision number representing conditional add result.
- * a  A single precision number to add with.
- * b  A single precision number to add.
- * m  Mask value to apply.
+ * @param [out] r  A single precision number representing conditional add
+ *                 result.
+ * @param [in]  a  A single precision number to add with.
+ * @param [in]  b  A single precision number to add.
+ * @param [in]  m  Mask value to apply.
  */
 static sp_digit sp_256_cond_add_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit* b,
         sp_digit m)
@@ -18662,7 +18672,7 @@ static sp_digit sp_256_cond_add_sm2_4(sp_digit* r, const sp_digit* a, const sp_d
     __asm__ __volatile__ (
         "mov	x8, #0\n\t"
         "1:\n\t"
-        "adds	%[c], %[c], #-1\n\t"
+        "subs	%[c], %[c], #1\n\t"
         "ldr	x4, [%[a], x8]\n\t"
         "ldr	x5, [%[b], x8]\n\t"
         "and	x5, x5, %[m]\n\t"
@@ -18685,10 +18695,11 @@ static sp_digit sp_256_cond_add_sm2_4(sp_digit* r, const sp_digit* a, const sp_d
 /* Conditionally add a and b using the mask m.
  * m is -1 to add and 0 when not.
  *
- * r  A single precision number representing conditional add result.
- * a  A single precision number to add with.
- * b  A single precision number to add.
- * m  Mask value to apply.
+ * @param [out] r  A single precision number representing conditional add
+ *                 result.
+ * @param [in]  a  A single precision number to add with.
+ * @param [in]  b  A single precision number to add.
+ * @param [in]  m  Mask value to apply.
  */
 static sp_digit sp_256_cond_add_sm2_4(sp_digit* r, const sp_digit* a, const sp_digit* b,
         sp_digit m)
@@ -18749,84 +18760,84 @@ static void sp_256_mont_mul_order_sm2_4(sp_digit* r, const sp_digit* a, const sp
         "ldp	x15, x16, [%[a], 16]\n\t"
         "ldp	x17, x19, [%[b], 0]\n\t"
         "ldp	x20, x21, [%[b], 16]\n\t"
-        "# A[0] * B[0]\n\t"
+        /* A[0] * B[0] */
         "umulh	x6, x13, x17\n\t"
         "mul	x5, x13, x17\n\t"
-        "# A[2] * B[0]\n\t"
+        /* A[2] * B[0] */
         "umulh	x8, x15, x17\n\t"
         "mul	x7, x15, x17\n\t"
-        "# A[1] * B[0]\n\t"
+        /* A[1] * B[0] */
         "mul	x3, x14, x17\n\t"
         "adds	x6, x6, x3\n\t"
         "umulh	x4, x14, x17\n\t"
         "adcs	x7, x7, x4\n\t"
         "adc	x8, x8, xzr\n\t"
-        "# A[0] * B[2]\n\t"
+        /* A[0] * B[2] */
         "mul	x3, x13, x20\n\t"
         "adds	x7, x7, x3\n\t"
         "umulh	x4, x13, x20\n\t"
         "adcs	x8, x8, x4\n\t"
-        "# A[1] * B[3]\n\t"
+        /* A[1] * B[3] */
         "mul	x9, x14, x21\n\t"
         "adcs	x9, x9, xzr\n\t"
         "umulh	x10, x14, x21\n\t"
         "adc	x10, x10, xzr\n\t"
-        "# A[0] * B[1]\n\t"
+        /* A[0] * B[1] */
         "mul	x3, x13, x19\n\t"
         "adds	x6, x6, x3\n\t"
         "umulh	x4, x13, x19\n\t"
         "adcs	x7, x7, x4\n\t"
-        "# A[2] * B[1]\n\t"
+        /* A[2] * B[1] */
         "mul	x3, x15, x19\n\t"
         "adcs	x8, x8, x3\n\t"
         "umulh	x4, x15, x19\n\t"
         "adcs	x9, x9, x4\n\t"
         "adc	x10, x10, xzr\n\t"
-        "# A[1] * B[2]\n\t"
+        /* A[1] * B[2] */
         "mul	x3, x14, x20\n\t"
         "adds	x8, x8, x3\n\t"
         "umulh	x4, x14, x20\n\t"
         "adcs	x9, x9, x4\n\t"
         "adcs	x10, x10, xzr\n\t"
         "adc	x11, xzr, xzr\n\t"
-        "# A[1] * B[1]\n\t"
+        /* A[1] * B[1] */
         "mul	x3, x14, x19\n\t"
         "adds	x7, x7, x3\n\t"
         "umulh	x4, x14, x19\n\t"
         "adcs	x8, x8, x4\n\t"
-        "# A[3] * B[1]\n\t"
+        /* A[3] * B[1] */
         "mul	x3, x16, x19\n\t"
         "adcs	x9, x9, x3\n\t"
         "umulh	x4, x16, x19\n\t"
         "adcs	x10, x10, x4\n\t"
         "adc	x11, x11, xzr\n\t"
-        "# A[2] * B[2]\n\t"
+        /* A[2] * B[2] */
         "mul	x3, x15, x20\n\t"
         "adds	x9, x9, x3\n\t"
         "umulh	x4, x15, x20\n\t"
         "adcs	x10, x10, x4\n\t"
-        "# A[3] * B[3]\n\t"
+        /* A[3] * B[3] */
         "mul	x3, x16, x21\n\t"
         "adcs	x11, x11, x3\n\t"
         "umulh	x12, x16, x21\n\t"
         "adc	x12, x12, xzr\n\t"
-        "# A[0] * B[3]\n\t"
+        /* A[0] * B[3] */
         "mul	x3, x13, x21\n\t"
         "adds	x8, x8, x3\n\t"
         "umulh	x4, x13, x21\n\t"
         "adcs	x9, x9, x4\n\t"
-        "# A[2] * B[3]\n\t"
+        /* A[2] * B[3] */
         "mul	x3, x15, x21\n\t"
         "adcs	x10, x10, x3\n\t"
         "umulh	x4, x15, x21\n\t"
         "adcs	x11, x11, x4\n\t"
         "adc	x12, x12, xzr\n\t"
-        "# A[3] * B[0]\n\t"
+        /* A[3] * B[0] */
         "mul	x3, x16, x17\n\t"
         "adds	x8, x8, x3\n\t"
         "umulh	x4, x16, x17\n\t"
         "adcs	x9, x9, x4\n\t"
-        "# A[3] * B[2]\n\t"
+        /* A[3] * B[2] */
         "mul	x3, x16, x20\n\t"
         "adcs	x10, x10, x3\n\t"
         "umulh	x4, x16, x20\n\t"
@@ -18835,106 +18846,106 @@ static void sp_256_mont_mul_order_sm2_4(sp_digit* r, const sp_digit* a, const sp
         "ldp   x13, x14, [%[m], 0]\n\t"
         "mov x15, 0xffffffffffffffff\n\t"
         "mov x16, 0xfffffffeffffffff\n\t"
-        "# mu = a[0] * mp\n\t"
+        /* mu = a[0] * mp */
         "mul	x17, %[mp], x5\n\t"
-        "# a[0+0] += m[0] * mu\n\t"
+        /* a[0+0] += m[0] * mu */
         "mul	x3, x13, x17\n\t"
         "adds	x5, x5, x3\n\t"
         "umulh	x4, x13, x17\n\t"
         "adcs	x6, x6, x4\n\t"
-        "# a[0+2] += m[2] * mu\n\t"
+        /* a[0+2] += m[2] * mu */
         "mul	x3, x15, x17\n\t"
         "adcs	x7, x7, x3\n\t"
         "umulh	x4, x15, x17\n\t"
         "adcs	x8, x8, x4\n\t"
         "adcs	x9, x9, xzr\n\t"
         "adc	x19, xzr, xzr\n\t"
-        "# a[0+1] += m[1] * mu\n\t"
+        /* a[0+1] += m[1] * mu */
         "mul	x3, x14, x17\n\t"
         "adds	x6, x6, x3\n\t"
         "umulh	x4, x14, x17\n\t"
         "adcs	x7, x7, x4\n\t"
-        "# a[0+3] += m[3] * mu\n\t"
+        /* a[0+3] += m[3] * mu */
         "mul	x3, x16, x17\n\t"
         "adcs	x8, x8, x3\n\t"
         "umulh	x4, x16, x17\n\t"
         "adcs	x9, x9, x4\n\t"
-        "# mu = a[1] * mp\n\t"
+        /* mu = a[1] * mp */
         "mul	x17, %[mp], x6\n\t"
         "adc	x19, x19, xzr\n\t"
-        "# a[1+0] += m[0] * mu\n\t"
+        /* a[1+0] += m[0] * mu */
         "mul	x3, x13, x17\n\t"
         "adds	x6, x6, x3\n\t"
         "umulh	x4, x13, x17\n\t"
         "adcs	x7, x7, x4\n\t"
-        "# a[1+2] += m[2] * mu\n\t"
+        /* a[1+2] += m[2] * mu */
         "mul	x3, x15, x17\n\t"
         "adcs	x8, x8, x3\n\t"
         "umulh	x4, x15, x17\n\t"
         "adcs	x9, x9, x4\n\t"
         "adcs	x10, x10, x19\n\t"
         "adc	x19, xzr, xzr\n\t"
-        "# a[1+1] += m[1] * mu\n\t"
+        /* a[1+1] += m[1] * mu */
         "mul	x3, x14, x17\n\t"
         "adds	x7, x7, x3\n\t"
         "umulh	x4, x14, x17\n\t"
         "adcs	x8, x8, x4\n\t"
-        "# a[1+3] += m[3] * mu\n\t"
+        /* a[1+3] += m[3] * mu */
         "mul	x3, x16, x17\n\t"
         "adcs	x9, x9, x3\n\t"
         "umulh	x4, x16, x17\n\t"
         "adcs	x10, x10, x4\n\t"
-        "# mu = a[2] * mp\n\t"
+        /* mu = a[2] * mp */
         "mul	x17, %[mp], x7\n\t"
         "adc	x19, x19, xzr\n\t"
-        "# a[2+0] += m[0] * mu\n\t"
+        /* a[2+0] += m[0] * mu */
         "mul	x3, x13, x17\n\t"
         "adds	x7, x7, x3\n\t"
         "umulh	x4, x13, x17\n\t"
         "adcs	x8, x8, x4\n\t"
-        "# a[2+2] += m[2] * mu\n\t"
+        /* a[2+2] += m[2] * mu */
         "mul	x3, x15, x17\n\t"
         "adcs	x9, x9, x3\n\t"
         "umulh	x4, x15, x17\n\t"
         "adcs	x10, x10, x4\n\t"
         "adcs	x11, x11, x19\n\t"
         "adc	x19, xzr, xzr\n\t"
-        "# a[2+1] += m[1] * mu\n\t"
+        /* a[2+1] += m[1] * mu */
         "mul	x3, x14, x17\n\t"
         "adds	x8, x8, x3\n\t"
         "umulh	x4, x14, x17\n\t"
         "adcs	x9, x9, x4\n\t"
-        "# a[2+3] += m[3] * mu\n\t"
+        /* a[2+3] += m[3] * mu */
         "mul	x3, x16, x17\n\t"
         "adcs	x10, x10, x3\n\t"
         "umulh	x4, x16, x17\n\t"
         "adcs	x11, x11, x4\n\t"
-        "# mu = a[3] * mp\n\t"
+        /* mu = a[3] * mp */
         "mul	x17, %[mp], x8\n\t"
         "adc	x19, x19, xzr\n\t"
-        "# a[3+0] += m[0] * mu\n\t"
+        /* a[3+0] += m[0] * mu */
         "mul	x3, x13, x17\n\t"
         "adds	x8, x8, x3\n\t"
         "umulh	x4, x13, x17\n\t"
         "adcs	x9, x9, x4\n\t"
-        "# a[3+2] += m[2] * mu\n\t"
+        /* a[3+2] += m[2] * mu */
         "mul	x3, x15, x17\n\t"
         "adcs	x10, x10, x3\n\t"
         "umulh	x4, x15, x17\n\t"
         "adcs	x11, x11, x4\n\t"
         "adcs	x12, x12, x19\n\t"
         "adc	x19, xzr, xzr\n\t"
-        "# a[3+1] += m[1] * mu\n\t"
+        /* a[3+1] += m[1] * mu */
         "mul	x3, x14, x17\n\t"
         "adds	x9, x9, x3\n\t"
         "umulh	x4, x14, x17\n\t"
         "adcs	x10, x10, x4\n\t"
-        "# a[3+3] += m[3] * mu\n\t"
+        /* a[3+3] += m[3] * mu */
         "mul	x3, x16, x17\n\t"
         "adcs	x11, x11, x3\n\t"
         "umulh	x4, x16, x17\n\t"
         "adcs	x12, x12, x4\n\t"
-        "# x15 == -1\n\t"
+        /* x15 == -1 */
         "adcs	x19, x19, x15\n\t"
         "csel	x13, x13, xzr, cs\n\t"
         "csel	x14, x14, xzr, cs\n\t"
@@ -18963,33 +18974,33 @@ static void sp_256_mont_sqr_order_sm2_4(sp_digit* r, const sp_digit* a)
     __asm__ __volatile__ (
         "ldp	x12, x13, [%[a], 0]\n\t"
         "ldp	x14, x15, [%[a], 16]\n\t"
-        "# A[0] * A[1]\n\t"
+        /* A[0] * A[1] */
         "umulh	x6, x12, x13\n\t"
         "mul	x5, x12, x13\n\t"
-        "# A[0] * A[3]\n\t"
+        /* A[0] * A[3] */
         "umulh	x8, x12, x15\n\t"
         "mul	x7, x12, x15\n\t"
-        "# A[0] * A[2]\n\t"
+        /* A[0] * A[2] */
         "mul	x2, x12, x14\n\t"
         "adds	x6, x6, x2\n\t"
         "umulh	x3, x12, x14\n\t"
         "adcs	x7, x7, x3\n\t"
-        "# A[1] * A[3]\n\t"
+        /* A[1] * A[3] */
         "mul	x2, x13, x15\n\t"
         "adcs	x8, x8, x2\n\t"
         "umulh	x9, x13, x15\n\t"
         "adc	x9, x9, xzr\n\t"
-        "# A[1] * A[2]\n\t"
+        /* A[1] * A[2] */
         "mul	x2, x13, x14\n\t"
         "adds	x7, x7, x2\n\t"
         "umulh	x3, x13, x14\n\t"
         "adcs	x8, x8, x3\n\t"
-        "# A[2] * A[3]\n\t"
+        /* A[2] * A[3] */
         "mul	x2, x14, x15\n\t"
         "adcs	x9, x9, x2\n\t"
         "umulh	x10, x14, x15\n\t"
         "adc	x10, x10, xzr\n\t"
-        "# Double\n\t"
+        /* Double */
         "adds	x5, x5, x5\n\t"
         "adcs	x6, x6, x6\n\t"
         "adcs	x7, x7, x7\n\t"
@@ -18997,20 +19008,20 @@ static void sp_256_mont_sqr_order_sm2_4(sp_digit* r, const sp_digit* a)
         "adcs	x9, x9, x9\n\t"
         "adcs	x10, x10, x10\n\t"
         "adc	x11, xzr, xzr\n\t"
-        "# A[0] * A[0]\n\t"
+        /* A[0] * A[0] */
         "umulh	x3, x12, x12\n\t"
         "mul	x4, x12, x12\n\t"
-        "# A[1] * A[1]\n\t"
+        /* A[1] * A[1] */
         "mul	x2, x13, x13\n\t"
         "adds	x5, x5, x3\n\t"
         "umulh	x3, x13, x13\n\t"
         "adcs	x6, x6, x2\n\t"
-        "# A[2] * A[2]\n\t"
+        /* A[2] * A[2] */
         "mul	x2, x14, x14\n\t"
         "adcs	x7, x7, x3\n\t"
         "umulh	x3, x14, x14\n\t"
         "adcs	x8, x8, x2\n\t"
-        "# A[3] * A[3]\n\t"
+        /* A[3] * A[3] */
         "mul	x2, x15, x15\n\t"
         "adcs	x9, x9, x3\n\t"
         "umulh	x3, x15, x15\n\t"
@@ -19019,106 +19030,106 @@ static void sp_256_mont_sqr_order_sm2_4(sp_digit* r, const sp_digit* a)
         "ldp   x12, x13, [%[m], 0]\n\t"
         "mov x14, 0xffffffffffffffff\n\t"
         "mov x15, 0xfffffffeffffffff\n\t"
-        "# mu = a[0] * mp\n\t"
+        /* mu = a[0] * mp */
         "mul	x16, %[mp], x4\n\t"
-        "# a[0+0] += m[0] * mu\n\t"
+        /* a[0+0] += m[0] * mu */
         "mul	x2, x12, x16\n\t"
         "adds	x4, x4, x2\n\t"
         "umulh	x3, x12, x16\n\t"
         "adcs	x5, x5, x3\n\t"
-        "# a[0+2] += m[2] * mu\n\t"
+        /* a[0+2] += m[2] * mu */
         "mul	x2, x14, x16\n\t"
         "adcs	x6, x6, x2\n\t"
         "umulh	x3, x14, x16\n\t"
         "adcs	x7, x7, x3\n\t"
         "adcs	x8, x8, xzr\n\t"
         "adc	x17, xzr, xzr\n\t"
-        "# a[0+1] += m[1] * mu\n\t"
+        /* a[0+1] += m[1] * mu */
         "mul	x2, x13, x16\n\t"
         "adds	x5, x5, x2\n\t"
         "umulh	x3, x13, x16\n\t"
         "adcs	x6, x6, x3\n\t"
-        "# a[0+3] += m[3] * mu\n\t"
+        /* a[0+3] += m[3] * mu */
         "mul	x2, x15, x16\n\t"
         "adcs	x7, x7, x2\n\t"
         "umulh	x3, x15, x16\n\t"
         "adcs	x8, x8, x3\n\t"
-        "# mu = a[1] * mp\n\t"
+        /* mu = a[1] * mp */
         "mul	x16, %[mp], x5\n\t"
         "adc	x17, x17, xzr\n\t"
-        "# a[1+0] += m[0] * mu\n\t"
+        /* a[1+0] += m[0] * mu */
         "mul	x2, x12, x16\n\t"
         "adds	x5, x5, x2\n\t"
         "umulh	x3, x12, x16\n\t"
         "adcs	x6, x6, x3\n\t"
-        "# a[1+2] += m[2] * mu\n\t"
+        /* a[1+2] += m[2] * mu */
         "mul	x2, x14, x16\n\t"
         "adcs	x7, x7, x2\n\t"
         "umulh	x3, x14, x16\n\t"
         "adcs	x8, x8, x3\n\t"
         "adcs	x9, x9, x17\n\t"
         "adc	x17, xzr, xzr\n\t"
-        "# a[1+1] += m[1] * mu\n\t"
+        /* a[1+1] += m[1] * mu */
         "mul	x2, x13, x16\n\t"
         "adds	x6, x6, x2\n\t"
         "umulh	x3, x13, x16\n\t"
         "adcs	x7, x7, x3\n\t"
-        "# a[1+3] += m[3] * mu\n\t"
+        /* a[1+3] += m[3] * mu */
         "mul	x2, x15, x16\n\t"
         "adcs	x8, x8, x2\n\t"
         "umulh	x3, x15, x16\n\t"
         "adcs	x9, x9, x3\n\t"
-        "# mu = a[2] * mp\n\t"
+        /* mu = a[2] * mp */
         "mul	x16, %[mp], x6\n\t"
         "adc	x17, x17, xzr\n\t"
-        "# a[2+0] += m[0] * mu\n\t"
+        /* a[2+0] += m[0] * mu */
         "mul	x2, x12, x16\n\t"
         "adds	x6, x6, x2\n\t"
         "umulh	x3, x12, x16\n\t"
         "adcs	x7, x7, x3\n\t"
-        "# a[2+2] += m[2] * mu\n\t"
+        /* a[2+2] += m[2] * mu */
         "mul	x2, x14, x16\n\t"
         "adcs	x8, x8, x2\n\t"
         "umulh	x3, x14, x16\n\t"
         "adcs	x9, x9, x3\n\t"
         "adcs	x10, x10, x17\n\t"
         "adc	x17, xzr, xzr\n\t"
-        "# a[2+1] += m[1] * mu\n\t"
+        /* a[2+1] += m[1] * mu */
         "mul	x2, x13, x16\n\t"
         "adds	x7, x7, x2\n\t"
         "umulh	x3, x13, x16\n\t"
         "adcs	x8, x8, x3\n\t"
-        "# a[2+3] += m[3] * mu\n\t"
+        /* a[2+3] += m[3] * mu */
         "mul	x2, x15, x16\n\t"
         "adcs	x9, x9, x2\n\t"
         "umulh	x3, x15, x16\n\t"
         "adcs	x10, x10, x3\n\t"
-        "# mu = a[3] * mp\n\t"
+        /* mu = a[3] * mp */
         "mul	x16, %[mp], x7\n\t"
         "adc	x17, x17, xzr\n\t"
-        "# a[3+0] += m[0] * mu\n\t"
+        /* a[3+0] += m[0] * mu */
         "mul	x2, x12, x16\n\t"
         "adds	x7, x7, x2\n\t"
         "umulh	x3, x12, x16\n\t"
         "adcs	x8, x8, x3\n\t"
-        "# a[3+2] += m[2] * mu\n\t"
+        /* a[3+2] += m[2] * mu */
         "mul	x2, x14, x16\n\t"
         "adcs	x9, x9, x2\n\t"
         "umulh	x3, x14, x16\n\t"
         "adcs	x10, x10, x3\n\t"
         "adcs	x11, x11, x17\n\t"
         "adc	x17, xzr, xzr\n\t"
-        "# a[3+1] += m[1] * mu\n\t"
+        /* a[3+1] += m[1] * mu */
         "mul	x2, x13, x16\n\t"
         "adds	x8, x8, x2\n\t"
         "umulh	x3, x13, x16\n\t"
         "adcs	x9, x9, x3\n\t"
-        "# a[3+3] += m[3] * mu\n\t"
+        /* a[3+3] += m[3] * mu */
         "mul	x2, x15, x16\n\t"
         "adcs	x10, x10, x2\n\t"
         "umulh	x3, x15, x16\n\t"
         "adcs	x11, x11, x3\n\t"
-        "# x14 == -1\n\t"
+        /* x14 == -1 */
         "adcs	x17, x17, x14\n\t"
         "csel	x12, x12, xzr, cs\n\t"
         "csel	x13, x13, xzr, cs\n\t"
@@ -19151,33 +19162,33 @@ static void sp_256_mont_sqr_n_order_sm2_4(sp_digit* r, const sp_digit* a, int n)
         "ldp   x12, x13, [%[a], 0]\n\t"
         "ldp   x14, x15, [%[a], 16]\n\t"
         "1:\n\t"
-        "# A[0] * A[1]\n\t"
+        /* A[0] * A[1] */
         "umulh	x6, x12, x13\n\t"
         "mul	x5, x12, x13\n\t"
-        "# A[0] * A[3]\n\t"
+        /* A[0] * A[3] */
         "umulh	x8, x12, x15\n\t"
         "mul	x7, x12, x15\n\t"
-        "# A[0] * A[2]\n\t"
+        /* A[0] * A[2] */
         "mul	x2, x12, x14\n\t"
         "adds	x6, x6, x2\n\t"
         "umulh	x3, x12, x14\n\t"
         "adcs	x7, x7, x3\n\t"
-        "# A[1] * A[3]\n\t"
+        /* A[1] * A[3] */
         "mul	x2, x13, x15\n\t"
         "adcs	x8, x8, x2\n\t"
         "umulh	x9, x13, x15\n\t"
         "adc	x9, x9, xzr\n\t"
-        "# A[1] * A[2]\n\t"
+        /* A[1] * A[2] */
         "mul	x2, x13, x14\n\t"
         "adds	x7, x7, x2\n\t"
         "umulh	x3, x13, x14\n\t"
         "adcs	x8, x8, x3\n\t"
-        "# A[2] * A[3]\n\t"
+        /* A[2] * A[3] */
         "mul	x2, x14, x15\n\t"
         "adcs	x9, x9, x2\n\t"
         "umulh	x10, x14, x15\n\t"
         "adc	x10, x10, xzr\n\t"
-        "# Double\n\t"
+        /* Double */
         "adds	x5, x5, x5\n\t"
         "adcs	x6, x6, x6\n\t"
         "adcs	x7, x7, x7\n\t"
@@ -19185,20 +19196,20 @@ static void sp_256_mont_sqr_n_order_sm2_4(sp_digit* r, const sp_digit* a, int n)
         "adcs	x9, x9, x9\n\t"
         "adcs	x10, x10, x10\n\t"
         "adc	x11, xzr, xzr\n\t"
-        "# A[0] * A[0]\n\t"
+        /* A[0] * A[0] */
         "umulh	x3, x12, x12\n\t"
         "mul	x4, x12, x12\n\t"
-        "# A[1] * A[1]\n\t"
+        /* A[1] * A[1] */
         "mul	x2, x13, x13\n\t"
         "adds	x5, x5, x3\n\t"
         "umulh	x3, x13, x13\n\t"
         "adcs	x6, x6, x2\n\t"
-        "# A[2] * A[2]\n\t"
+        /* A[2] * A[2] */
         "mul	x2, x14, x14\n\t"
         "adcs	x7, x7, x3\n\t"
         "umulh	x3, x14, x14\n\t"
         "adcs	x8, x8, x2\n\t"
-        "# A[3] * A[3]\n\t"
+        /* A[3] * A[3] */
         "mul	x2, x15, x15\n\t"
         "adcs	x9, x9, x3\n\t"
         "umulh	x3, x15, x15\n\t"
@@ -19207,106 +19218,106 @@ static void sp_256_mont_sqr_n_order_sm2_4(sp_digit* r, const sp_digit* a, int n)
         "ldp   x12, x13, [%[m], 0]\n\t"
         "mov x14, 0xffffffffffffffff\n\t"
         "mov x15, 0xfffffffeffffffff\n\t"
-        "# mu = a[0] * mp\n\t"
+        /* mu = a[0] * mp */
         "mul	x16, %[mp], x4\n\t"
-        "# a[0+0] += m[0] * mu\n\t"
+        /* a[0+0] += m[0] * mu */
         "mul	x2, x12, x16\n\t"
         "adds	x4, x4, x2\n\t"
         "umulh	x3, x12, x16\n\t"
         "adcs	x5, x5, x3\n\t"
-        "# a[0+2] += m[2] * mu\n\t"
+        /* a[0+2] += m[2] * mu */
         "mul	x2, x14, x16\n\t"
         "adcs	x6, x6, x2\n\t"
         "umulh	x3, x14, x16\n\t"
         "adcs	x7, x7, x3\n\t"
         "adcs	x8, x8, xzr\n\t"
         "adc	x17, xzr, xzr\n\t"
-        "# a[0+1] += m[1] * mu\n\t"
+        /* a[0+1] += m[1] * mu */
         "mul	x2, x13, x16\n\t"
         "adds	x5, x5, x2\n\t"
         "umulh	x3, x13, x16\n\t"
         "adcs	x6, x6, x3\n\t"
-        "# a[0+3] += m[3] * mu\n\t"
+        /* a[0+3] += m[3] * mu */
         "mul	x2, x15, x16\n\t"
         "adcs	x7, x7, x2\n\t"
         "umulh	x3, x15, x16\n\t"
         "adcs	x8, x8, x3\n\t"
-        "# mu = a[1] * mp\n\t"
+        /* mu = a[1] * mp */
         "mul	x16, %[mp], x5\n\t"
         "adc	x17, x17, xzr\n\t"
-        "# a[1+0] += m[0] * mu\n\t"
+        /* a[1+0] += m[0] * mu */
         "mul	x2, x12, x16\n\t"
         "adds	x5, x5, x2\n\t"
         "umulh	x3, x12, x16\n\t"
         "adcs	x6, x6, x3\n\t"
-        "# a[1+2] += m[2] * mu\n\t"
+        /* a[1+2] += m[2] * mu */
         "mul	x2, x14, x16\n\t"
         "adcs	x7, x7, x2\n\t"
         "umulh	x3, x14, x16\n\t"
         "adcs	x8, x8, x3\n\t"
         "adcs	x9, x9, x17\n\t"
         "adc	x17, xzr, xzr\n\t"
-        "# a[1+1] += m[1] * mu\n\t"
+        /* a[1+1] += m[1] * mu */
         "mul	x2, x13, x16\n\t"
         "adds	x6, x6, x2\n\t"
         "umulh	x3, x13, x16\n\t"
         "adcs	x7, x7, x3\n\t"
-        "# a[1+3] += m[3] * mu\n\t"
+        /* a[1+3] += m[3] * mu */
         "mul	x2, x15, x16\n\t"
         "adcs	x8, x8, x2\n\t"
         "umulh	x3, x15, x16\n\t"
         "adcs	x9, x9, x3\n\t"
-        "# mu = a[2] * mp\n\t"
+        /* mu = a[2] * mp */
         "mul	x16, %[mp], x6\n\t"
         "adc	x17, x17, xzr\n\t"
-        "# a[2+0] += m[0] * mu\n\t"
+        /* a[2+0] += m[0] * mu */
         "mul	x2, x12, x16\n\t"
         "adds	x6, x6, x2\n\t"
         "umulh	x3, x12, x16\n\t"
         "adcs	x7, x7, x3\n\t"
-        "# a[2+2] += m[2] * mu\n\t"
+        /* a[2+2] += m[2] * mu */
         "mul	x2, x14, x16\n\t"
         "adcs	x8, x8, x2\n\t"
         "umulh	x3, x14, x16\n\t"
         "adcs	x9, x9, x3\n\t"
         "adcs	x10, x10, x17\n\t"
         "adc	x17, xzr, xzr\n\t"
-        "# a[2+1] += m[1] * mu\n\t"
+        /* a[2+1] += m[1] * mu */
         "mul	x2, x13, x16\n\t"
         "adds	x7, x7, x2\n\t"
         "umulh	x3, x13, x16\n\t"
         "adcs	x8, x8, x3\n\t"
-        "# a[2+3] += m[3] * mu\n\t"
+        /* a[2+3] += m[3] * mu */
         "mul	x2, x15, x16\n\t"
         "adcs	x9, x9, x2\n\t"
         "umulh	x3, x15, x16\n\t"
         "adcs	x10, x10, x3\n\t"
-        "# mu = a[3] * mp\n\t"
+        /* mu = a[3] * mp */
         "mul	x16, %[mp], x7\n\t"
         "adc	x17, x17, xzr\n\t"
-        "# a[3+0] += m[0] * mu\n\t"
+        /* a[3+0] += m[0] * mu */
         "mul	x2, x12, x16\n\t"
         "adds	x7, x7, x2\n\t"
         "umulh	x3, x12, x16\n\t"
         "adcs	x8, x8, x3\n\t"
-        "# a[3+2] += m[2] * mu\n\t"
+        /* a[3+2] += m[2] * mu */
         "mul	x2, x14, x16\n\t"
         "adcs	x9, x9, x2\n\t"
         "umulh	x3, x14, x16\n\t"
         "adcs	x10, x10, x3\n\t"
         "adcs	x11, x11, x17\n\t"
         "adc	x17, xzr, xzr\n\t"
-        "# a[3+1] += m[1] * mu\n\t"
+        /* a[3+1] += m[1] * mu */
         "mul	x2, x13, x16\n\t"
         "adds	x8, x8, x2\n\t"
         "umulh	x3, x13, x16\n\t"
         "adcs	x9, x9, x3\n\t"
-        "# a[3+3] += m[3] * mu\n\t"
+        /* a[3+3] += m[3] * mu */
         "mul	x2, x15, x16\n\t"
         "adcs	x10, x10, x2\n\t"
         "umulh	x3, x15, x16\n\t"
         "adcs	x11, x11, x3\n\t"
-        "# x14 == -1\n\t"
+        /* x14 == -1 */
         "adcs	x17, x17, x14\n\t"
         "csel	x12, x12, xzr, cs\n\t"
         "csel	x13, x13, xzr, cs\n\t"
@@ -19753,13 +19764,12 @@ int sp_ecc_verify_sm2_256(const byte* hash, word32 hashLen, const mp_int* pX,
 }
 #endif /* HAVE_ECC_VERIFY */
 
-#ifdef HAVE_ECC_CHECK_KEY
 /* Add two Montgomery form numbers (r = a + b % m).
  *
- * r   Result of addition.
- * a   First number to add in Montgomery form.
- * b   Second number to add in Montgomery form.
- * m   Modulus (prime).
+ * @param [out] r  Result of addition.
+ * @param [in]  a  First number to add in Montgomery form.
+ * @param [in]  b  Second number to add in Montgomery form.
+ * @param [in]  m  Modulus (prime).
  */
 SP_NOINLINE static void sp_256_mont_add_sm2_4(sp_digit* r, const sp_digit* a,
     const sp_digit* b, const sp_digit* m)
@@ -19800,29 +19810,23 @@ SP_NOINLINE static void sp_256_mont_add_sm2_4(sp_digit* r, const sp_digit* a,
 
 /* Check that the x and y ordinates are a valid point on the curve.
  *
- * point  EC point.
- * heap   Heap to use if dynamically allocating.
- * returns MEMORY_E if dynamic memory allocation fails, MP_VAL if the point is
- * not on the curve and MP_OKAY otherwise.
+ * @param [in] point  EC point.
+ * @param [in] heap   Heap to use if dynamically allocating.
+ *
+ * @return  MP_OKAY otherwise.
+ * @return  MEMORY_E when dynamic memory allocation fails.
+ * @return  MP_VAL when the point is not on the curve.
  */
 static int sp_256_ecc_is_point_sm2_4(const sp_point_256* point,
     void* heap)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_digit* t1 = NULL;
-#else
-    sp_digit t1[4 * 4];
-#endif
+    SP_DECL_VAR(sp_digit, t1, 4 * 4);
     sp_digit* t2 = NULL;
     int err = MP_OKAY;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    t1 = (sp_digit*)XMALLOC(sizeof(sp_digit) * 4 * 4, heap, DYNAMIC_TYPE_ECC);
-    if (t1 == NULL)
-        err = MEMORY_E;
-#endif
     (void)heap;
 
+    SP_ALLOC_VAR(sp_digit, t1, 4 * 4, heap, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         t2 = t1 + 2 * 4;
 
@@ -19846,37 +19850,27 @@ static int sp_256_ecc_is_point_sm2_4(const sp_point_256* point,
         }
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(t1, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(t1, heap, DYNAMIC_TYPE_ECC);
 
     return err;
 }
 
 /* Check that the x and y ordinates are a valid point on the curve.
  *
- * pX  X ordinate of EC point.
- * pY  Y ordinate of EC point.
- * returns MEMORY_E if dynamic memory allocation fails, MP_VAL if the point is
- * not on the curve and MP_OKAY otherwise.
+ * @param [in] pX  X ordinate of EC point.
+ * @param [in] pY  Y ordinate of EC point.
+ *
+ * @return  MP_OKAY otherwise.
+ * @return  MEMORY_E when dynamic memory allocation fails.
+ * @return  MP_VAL when the point is not on the curve.
  */
 int sp_ecc_is_point_sm2_256(const mp_int* pX, const mp_int* pY)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_point_256* pub = NULL;
-#else
-    sp_point_256 pub[1];
-#endif
+    SP_DECL_VAR(sp_point_256, pub, 1);
     const byte one[1] = { 1 };
     int err = MP_OKAY;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    pub = (sp_point_256*)XMALLOC(sizeof(sp_point_256), NULL,
-                                       DYNAMIC_TYPE_ECC);
-    if (pub == NULL)
-        err = MEMORY_E;
-#endif
-
+    SP_ALLOC_VAR(sp_point_256, pub, 1, NULL, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         sp_256_from_mp(pub->x, 4, pX);
         sp_256_from_mp(pub->y, 4, pY);
@@ -19885,34 +19879,32 @@ int sp_ecc_is_point_sm2_256(const mp_int* pX, const mp_int* pY)
         err = sp_256_ecc_is_point_sm2_4(pub, NULL);
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(pub, NULL, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(pub, NULL, DYNAMIC_TYPE_ECC);
 
     return err;
 }
 
+#if defined(HAVE_ECC_CHECK_KEY) || !defined(NO_ECC_CHECK_PUBKEY_ORDER)
 /* Check that the private scalar generates the EC point (px, py), the point is
  * on the curve and the point has the correct order.
  *
- * pX     X ordinate of EC point.
- * pY     Y ordinate of EC point.
- * privm  Private scalar that generates EC point.
- * returns MEMORY_E if dynamic memory allocation fails, MP_VAL if the point is
- * not on the curve, ECC_INF_E if the point does not have the correct order,
- * ECC_PRIV_KEY_E when the private scalar doesn't generate the EC point and
- * MP_OKAY otherwise.
+ * @param [in] pX     X ordinate of EC point.
+ * @param [in] pY     Y ordinate of EC point.
+ * @param [in] privm  Private scalar that generates EC point.
+ * @param [in] heap   Heap to use for allocation.
+ *
+ * @return  MP_OKAY otherwise.
+ * @return  MEMORY_E when dynamic memory allocation fails.
+ * @return  MP_VAL when the point is not on the curve.
+ * @return  ECC_INF_E when the point does not have the correct order.
+ * @return  ECC_PRIV_KEY_E when the private scalar doesn't generate the EC
+ *          point.
  */
 int sp_ecc_check_key_sm2_256(const mp_int* pX, const mp_int* pY,
     const mp_int* privm, void* heap)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_digit* priv = NULL;
-    sp_point_256* pub = NULL;
-#else
-    sp_digit priv[4];
-    sp_point_256 pub[2];
-#endif
+    SP_DECL_VAR(sp_digit, priv, 4);
+    SP_DECL_VAR(sp_point_256, pub, 2);
     sp_point_256* p = NULL;
     const byte one[1] = { 1 };
     int err = MP_OKAY;
@@ -19927,21 +19919,8 @@ int sp_ecc_check_key_sm2_256(const mp_int* pX, const mp_int* pY,
         err = ECC_OUT_OF_RANGE_E;
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    if (err == MP_OKAY) {
-        pub = (sp_point_256*)XMALLOC(sizeof(sp_point_256) * 2, heap,
-                                           DYNAMIC_TYPE_ECC);
-        if (pub == NULL)
-            err = MEMORY_E;
-    }
-    if (err == MP_OKAY && privm) {
-        priv = (sp_digit*)XMALLOC(sizeof(sp_digit) * 4, heap,
-                                  DYNAMIC_TYPE_ECC);
-        if (priv == NULL)
-            err = MEMORY_E;
-    }
-#endif
-
+    SP_ALLOC_VAR(sp_digit, priv, 4, heap, DYNAMIC_TYPE_ECC);
+    SP_ALLOC_VAR(sp_point_256, pub, 2, heap, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         p = pub + 1;
 
@@ -19993,10 +19972,8 @@ int sp_ecc_check_key_sm2_256(const mp_int* pX, const mp_int* pY,
         }
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(pub, heap, DYNAMIC_TYPE_ECC);
-    XFREE(priv, heap, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(pub, heap, DYNAMIC_TYPE_ECC);
+    SP_FREE_VAR(priv, heap, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -20005,47 +19982,30 @@ int sp_ecc_check_key_sm2_256(const mp_int* pX, const mp_int* pY,
 /* Add two projective EC points together.
  * (pX, pY, pZ) + (qX, qY, qZ) = (rX, rY, rZ)
  *
- * pX   First EC point's X ordinate.
- * pY   First EC point's Y ordinate.
- * pZ   First EC point's Z ordinate.
- * qX   Second EC point's X ordinate.
- * qY   Second EC point's Y ordinate.
- * qZ   Second EC point's Z ordinate.
- * rX   Resultant EC point's X ordinate.
- * rY   Resultant EC point's Y ordinate.
- * rZ   Resultant EC point's Z ordinate.
- * returns MEMORY_E if dynamic memory allocation fails and MP_OKAY otherwise.
+ * @param [in]  pX  First EC point's X ordinate.
+ * @param [in]  pY  First EC point's Y ordinate.
+ * @param [in]  pZ  First EC point's Z ordinate.
+ * @param [in]  qX  Second EC point's X ordinate.
+ * @param [in]  qY  Second EC point's Y ordinate.
+ * @param [in]  qZ  Second EC point's Z ordinate.
+ * @param [out] rX  Resultant EC point's X ordinate.
+ * @param [out] rY  Resultant EC point's Y ordinate.
+ * @param [out] rZ  Resultant EC point's Z ordinate.
+ *
+ * @return  MP_OKAY otherwise.
+ * @return  MEMORY_E when dynamic memory allocation fails.
  */
 int sp_ecc_proj_add_point_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ,
                               mp_int* qX, mp_int* qY, mp_int* qZ,
                               mp_int* rX, mp_int* rY, mp_int* rZ)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_digit* tmp = NULL;
-    sp_point_256* p = NULL;
-#else
-    sp_digit tmp[2 * 4 * 6];
-    sp_point_256 p[2];
-#endif
+    SP_DECL_VAR(sp_digit, tmp, 2 * 4 * 6);
+    SP_DECL_VAR(sp_point_256, p, 2);
     sp_point_256* q = NULL;
     int err = MP_OKAY;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    if (err == MP_OKAY) {
-        p = (sp_point_256*)XMALLOC(sizeof(sp_point_256) * 2, NULL,
-                                         DYNAMIC_TYPE_ECC);
-        if (p == NULL)
-            err = MEMORY_E;
-    }
-    if (err == MP_OKAY) {
-        tmp = (sp_digit*)XMALLOC(sizeof(sp_digit) * 2 * 4 * 6, NULL,
-                                 DYNAMIC_TYPE_ECC);
-        if (tmp == NULL) {
-            err = MEMORY_E;
-        }
-    }
-#endif
-
+    SP_ALLOC_VAR(sp_digit, tmp, 2 * 4 * 6, NULL, DYNAMIC_TYPE_ECC);
+    SP_ALLOC_VAR(sp_point_256, p, 2, NULL, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         q = p + 1;
 
@@ -20073,10 +20033,8 @@ int sp_ecc_proj_add_point_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ,
         err = sp_256_to_mp(p->z, rZ);
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
-    XFREE(p, NULL, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(p, NULL, DYNAMIC_TYPE_ECC);
+    SP_FREE_VAR(tmp, NULL, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -20084,41 +20042,25 @@ int sp_ecc_proj_add_point_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ,
 /* Double a projective EC point.
  * (pX, pY, pZ) + (pX, pY, pZ) = (rX, rY, rZ)
  *
- * pX   EC point's X ordinate.
- * pY   EC point's Y ordinate.
- * pZ   EC point's Z ordinate.
- * rX   Resultant EC point's X ordinate.
- * rY   Resultant EC point's Y ordinate.
- * rZ   Resultant EC point's Z ordinate.
- * returns MEMORY_E if dynamic memory allocation fails and MP_OKAY otherwise.
+ * @param [in]  pX  EC point's X ordinate.
+ * @param [in]  pY  EC point's Y ordinate.
+ * @param [in]  pZ  EC point's Z ordinate.
+ * @param [out] rX  Resultant EC point's X ordinate.
+ * @param [out] rY  Resultant EC point's Y ordinate.
+ * @param [out] rZ  Resultant EC point's Z ordinate.
+ *
+ * @return  MP_OKAY otherwise.
+ * @return  MEMORY_E when dynamic memory allocation fails.
  */
 int sp_ecc_proj_dbl_point_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ,
                               mp_int* rX, mp_int* rY, mp_int* rZ)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_digit* tmp = NULL;
-    sp_point_256* p = NULL;
-#else
-    sp_digit tmp[2 * 4 * 2];
-    sp_point_256 p[1];
-#endif
+    SP_DECL_VAR(sp_digit, tmp, 2 * 4 * 2);
+    SP_DECL_VAR(sp_point_256, p, 1);
     int err = MP_OKAY;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    if (err == MP_OKAY) {
-        p = (sp_point_256*)XMALLOC(sizeof(sp_point_256), NULL,
-                                         DYNAMIC_TYPE_ECC);
-        if (p == NULL)
-            err = MEMORY_E;
-    }
-    if (err == MP_OKAY) {
-        tmp = (sp_digit*)XMALLOC(sizeof(sp_digit) * 2 * 4 * 2, NULL,
-                                 DYNAMIC_TYPE_ECC);
-        if (tmp == NULL)
-            err = MEMORY_E;
-    }
-#endif
-
+    SP_ALLOC_VAR(sp_digit, tmp, 2 * 4 * 2, NULL, DYNAMIC_TYPE_ECC);
+    SP_ALLOC_VAR(sp_point_256, p, 1, NULL, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         sp_256_from_mp(p->x, 4, pX);
         sp_256_from_mp(p->y, 4, pY);
@@ -20139,10 +20081,8 @@ int sp_ecc_proj_dbl_point_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ,
         err = sp_256_to_mp(p->z, rZ);
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
-    XFREE(p, NULL, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(p, NULL, DYNAMIC_TYPE_ECC);
+    SP_FREE_VAR(tmp, NULL, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -20150,37 +20090,22 @@ int sp_ecc_proj_dbl_point_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ,
 /* Map a projective EC point to affine in place.
  * pZ will be one.
  *
- * pX   EC point's X ordinate.
- * pY   EC point's Y ordinate.
- * pZ   EC point's Z ordinate.
- * returns MEMORY_E if dynamic memory allocation fails and MP_OKAY otherwise.
+ * @param [in] pX  EC point's X ordinate.
+ * @param [in] pY  EC point's Y ordinate.
+ * @param [in] pZ  EC point's Z ordinate.
+ *
+ * @return  MP_OKAY otherwise.
+ * @return  MEMORY_E when dynamic memory allocation fails.
  */
 int sp_ecc_map_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_digit* tmp = NULL;
-    sp_point_256* p = NULL;
-#else
-    sp_digit tmp[2 * 4 * 5];
-    sp_point_256 p[1];
-#endif
+    SP_DECL_VAR(sp_digit, tmp, 2 * 4 * 5);
+    SP_DECL_VAR(sp_point_256, p, 1);
     int err = MP_OKAY;
 
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    if (err == MP_OKAY) {
-        p = (sp_point_256*)XMALLOC(sizeof(sp_point_256), NULL,
-                                         DYNAMIC_TYPE_ECC);
-        if (p == NULL)
-            err = MEMORY_E;
-    }
-    if (err == MP_OKAY) {
-        tmp = (sp_digit*)XMALLOC(sizeof(sp_digit) * 2 * 4 * 5, NULL,
-                                 DYNAMIC_TYPE_ECC);
-        if (tmp == NULL)
-            err = MEMORY_E;
-    }
-#endif
+    SP_ALLOC_VAR(sp_digit, tmp, 2 * 4 * 5, NULL, DYNAMIC_TYPE_ECC);
+    SP_ALLOC_VAR(sp_point_256, p, 1, NULL, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         sp_256_from_mp(p->x, 4, pX);
         sp_256_from_mp(p->y, 4, pY);
@@ -20201,10 +20126,8 @@ int sp_ecc_map_sm2_256(mp_int* pX, mp_int* pY, mp_int* pZ)
         err = sp_256_to_mp(p->z, pZ);
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(tmp, NULL, DYNAMIC_TYPE_ECC);
-    XFREE(p, NULL, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(p, NULL, DYNAMIC_TYPE_ECC);
+    SP_FREE_VAR(tmp, NULL, DYNAMIC_TYPE_ECC);
 
     return err;
 }
@@ -20244,7 +20167,7 @@ static int sp_256_mont_sqrt_sm2_4(sp_digit* y)
             XMEMCPY(t, y, sizeof(sp_digit) * 4);
             for (i=252; i>=0; i--) {
                 sp_256_mont_sqr_sm2_4(t, t, p256_sm2_mod, p256_sm2_mp_mod);
-                if (p256_sm2_sqrt_power[i / 64] & ((sp_digit)1 << (i % 64)))
+                if (p256_sm2_sqrt_power[i / 64] & ((sp_uint64)1 << (i % 64)))
                     sp_256_mont_mul_sm2_4(t, t, y, p256_sm2_mod, p256_sm2_mp_mod);
             }
             XMEMCPY(y, t, sizeof(sp_digit) * 4);
@@ -20262,27 +20185,20 @@ static int sp_256_mont_sqrt_sm2_4(sp_digit* y)
 
 /* Uncompress the point given the X ordinate.
  *
- * xm    X ordinate.
- * odd   Whether the Y ordinate is odd.
- * ym    Calculated Y ordinate.
- * returns MEMORY_E if dynamic memory allocation fails and MP_OKAY otherwise.
+ * @param [in]  xm   X ordinate.
+ * @param [in]  odd  Whether the Y ordinate is odd.
+ * @param [out] ym   Calculated Y ordinate.
+ *
+ * @return  MP_OKAY otherwise.
+ * @return  MEMORY_E when dynamic memory allocation fails.
  */
 int sp_ecc_uncompress_sm2_256(mp_int* xm, int odd, mp_int* ym)
 {
-#ifdef WOLFSSL_SP_SMALL_STACK
-    sp_digit* x = NULL;
-#else
-    sp_digit x[4 * 4];
-#endif
+    SP_DECL_VAR(sp_digit, x, 4 * 4);
     sp_digit* y = NULL;
     int err = MP_OKAY;
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    x = (sp_digit*)XMALLOC(sizeof(sp_digit) * 4 * 4, NULL, DYNAMIC_TYPE_ECC);
-    if (x == NULL)
-        err = MEMORY_E;
-#endif
-
+    SP_ALLOC_VAR(sp_digit, x, 4 * 4, NULL, DYNAMIC_TYPE_ECC);
     if (err == MP_OKAY) {
         y = x + 2 * 4;
 
@@ -20317,9 +20233,7 @@ int sp_ecc_uncompress_sm2_256(mp_int* xm, int odd, mp_int* ym)
         err = sp_256_to_mp(y, ym);
     }
 
-#ifdef WOLFSSL_SP_SMALL_STACK
-    XFREE(x, NULL, DYNAMIC_TYPE_ECC);
-#endif
+    SP_FREE_VAR(x, NULL, DYNAMIC_TYPE_ECC);
 
     return err;
 }
