@@ -29,6 +29,9 @@
 
 #include <wolfssl/wolfcrypt/sm3.h>
 #include <wolfssl/wolfcrypt/cpuid.h>
+#ifdef WOLF_CRYPTO_CB
+    #include <wolfssl/wolfcrypt/cryptocb.h>
+#endif
 #include <wolfssl/wolfcrypt/hash.h>
 
 #ifdef NO_INLINE
@@ -839,8 +842,9 @@ int wc_InitSm3(wc_Sm3* sm3, void* heap, int devId)
 {
     int ret = 0;
 
-    /* No device support yet. */
+#ifndef WOLF_CRYPTO_CB
     (void)devId;
+#endif
 
     /* Validate parameters. */
     if (sm3 == NULL) {
@@ -852,6 +856,11 @@ int wc_InitSm3(wc_Sm3* sm3, void* heap, int devId)
         sm3_init(sm3);
 
         sm3->heap = heap;
+    #ifdef WOLF_CRYPTO_CB
+        /* Cache the device to offer hashing to. */
+        sm3->devId = devId;
+        sm3->devCtx = NULL;
+    #endif
     #ifdef WOLFSSL_HASH_FLAGS
         sm3->flags = 0;
     #endif
@@ -931,6 +940,21 @@ int wc_Sm3Update(wc_Sm3* sm3, const byte* data, word32 len)
     /* Check internal state - buffer length is a valid value. */
     if ((ret == 0) && (sm3->buffLen >= WC_SM3_BLOCK_SIZE)) {
         ret = BAD_COND_E;
+    }
+#endif
+
+#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+    if (ret == 0) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+        if (sm3->devId != INVALID_DEVID)
+    #endif
+        {
+            ret = wc_CryptoCb_Sm3Hash(sm3, data, len, NULL);
+            if (ret != WC_NO_ERR_TRACE(CRYPTOCB_UNAVAILABLE)) {
+                return ret;
+            }
+            ret = 0;
+        }
     }
 #endif
 
@@ -1056,6 +1080,21 @@ int wc_Sm3Final(wc_Sm3* sm3, byte* hash)
         ret = BAD_FUNC_ARG;
     }
 
+#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+    if (ret == 0) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+        if (sm3->devId != INVALID_DEVID)
+    #endif
+        {
+            ret = wc_CryptoCb_Sm3Hash(sm3, NULL, 0, hash);
+            if (ret != WC_NO_ERR_TRACE(CRYPTOCB_UNAVAILABLE)) {
+                return ret;
+            }
+            ret = 0;
+        }
+    }
+#endif
+
     if (ret == 0) {
         byte* buffer8 = (byte*)sm3->buffer;
 
@@ -1091,6 +1130,20 @@ int wc_Sm3Final(wc_Sm3* sm3, byte* hash)
  */
 void wc_Sm3Free(wc_Sm3* sm3)
 {
+#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB) && \
+    defined(WOLF_CRYPTO_CB_FREE)
+    /* Check we have something to work with. */
+    if (sm3 != NULL) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+        if (sm3->devId != INVALID_DEVID)
+    #endif
+        {
+            /* Let the device release any state it holds for this context. */
+            (void)wc_CryptoCb_Free(sm3->devId, WC_ALGO_TYPE_HASH,
+                WC_HASH_TYPE_SM3, 0, sm3);
+        }
+    }
+#endif
     (void)sm3;
 }
 
@@ -1175,6 +1228,26 @@ int wc_Sm3Copy(const wc_Sm3* src, wc_Sm3* dst)
     if ((src == NULL) || (dst == NULL)) {
         ret = BAD_FUNC_ARG;
     }
+
+#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB) && \
+    defined(WOLF_CRYPTO_CB_COPY)
+    if (ret == 0) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+        if (src->devId != INVALID_DEVID)
+    #endif
+        {
+            /* The struct copy below would alias the device context, leaving
+             * two objects sharing one handle. Let the device duplicate it. */
+            ret = wc_CryptoCb_Copy(src->devId, WC_ALGO_TYPE_HASH,
+                WC_HASH_TYPE_SM3, (void*)src, (void*)dst);
+            if (ret != WC_NO_ERR_TRACE(CRYPTOCB_UNAVAILABLE)) {
+                return ret;
+            }
+            /* Fall through to software when the device declines. */
+            ret = 0;
+        }
+    }
+#endif
 
     if (ret == 0) {
         sm3_copy(src, dst);

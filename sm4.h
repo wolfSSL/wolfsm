@@ -28,6 +28,14 @@
 
 #ifdef WOLFSSL_SM4
 
+/* Tell wolfSSL's crypto callback layer that SM contexts carry a devId, so it
+ * compiles in the SM dispatch. Define WOLFSSL_NO_SM_CRYPTOCB to opt out, for
+ * example when building against a wolfSSL that predates the SM callbacks. */
+#if defined(WOLF_CRYPTO_CB) && !defined(WOLFSSL_NO_SM_CRYPTOCB)
+    #undef  WOLFSSL_SM_CRYPTOCB
+    #define WOLFSSL_SM_CRYPTOCB
+#endif
+
 enum {
     /* Key size for SM4 algorithm. */
     SM4_KEY_SIZE    = 16,  /* for 128 bit */
@@ -75,6 +83,10 @@ typedef struct wc_Sm4 {
 #ifdef WOLF_CRYPTO_CB
     int devId;
     void* devCtx;
+    /* Raw key kept for crypto callback devices. The key schedule above cannot
+     * be turned back into the key it came from, so a device that needs the key
+     * material reads it from here. */
+    byte devKey[SM4_KEY_SIZE];
 #endif
     void* heap; /* memory hint to use */
 

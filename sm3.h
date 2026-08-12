@@ -27,6 +27,14 @@
 
 #ifdef WOLFSSL_SM3
 
+/* Tell wolfSSL's crypto callback layer that SM contexts carry a devId, so it
+ * compiles in the SM dispatch. Define WOLFSSL_NO_SM_CRYPTOCB to opt out, for
+ * example when building against a wolfSSL that predates the SM callbacks. */
+#if defined(WOLF_CRYPTO_CB) && !defined(WOLFSSL_NO_SM_CRYPTOCB)
+    #undef  WOLFSSL_SM_CRYPTOCB
+    #define WOLFSSL_SM_CRYPTOCB
+#endif
+
 #ifdef __cplusplus
     extern "C" {
 #endif
@@ -58,6 +66,11 @@ struct wc_Sm3 {
     word32         hiLen;
     /* Dynamic allocation hint. */
     void*          heap;
+#ifdef WOLF_CRYPTO_CB
+    /* Device to offer hashing to, and its context. */
+    int            devId;
+    void*          devCtx;
+#endif
 #ifdef WOLFSSL_HASH_FLAGS
     /* Flags of hash object - see enum wc_HashFlags. */
     word32         flags;
