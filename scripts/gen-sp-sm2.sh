@@ -21,5 +21,7 @@ echo "arm64..."
 ruby sp/sp_sm2.rb ARM64 >$OUT_DIR/sp_sm2_arm64.c
 echo "x86_64..."
 ruby sp/sp_sm2.rb x86_64 $OUT_DIR/sp_sm2_x86_64_asm >$OUT_DIR/sp_sm2_x86_64.c
+echo "riscv64..."
+ruby sp/sp_sm2.rb RISCV64 $OUT_DIR/sp_sm2_riscv64
 echo "Done"
 

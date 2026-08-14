@@ -34,6 +34,7 @@ cp sp_sm2_arm32.c $WOLFSSL_DIR/wolfcrypt/src/
 cp sp_sm2_cortexm.c $WOLFSSL_DIR/wolfcrypt/src/
 cp sp_sm2_armthumb.c $WOLFSSL_DIR/wolfcrypt/src/
 cp sp_sm2_arm64.c $WOLFSSL_DIR/wolfcrypt/src/
+cp sp_sm2_riscv64.c $WOLFSSL_DIR/wolfcrypt/src/
 cp sm3.h $WOLFSSL_DIR/wolfssl/wolfcrypt/
 cp sm3.c $WOLFSSL_DIR/wolfcrypt/src/
 cp sm3_asm.S $WOLFSSL_DIR/wolfcrypt/src/
