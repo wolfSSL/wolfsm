@@ -710,8 +710,10 @@ static void sm4_set_key(wc_Sm4* sm4, const byte* key)
     /* Create key schedule. */
     sm4_key_schedule(key, sm4->ks);
 #ifdef WOLF_CRYPTO_CB
-    /* Keep the raw key when a device may perform the operation. */
-    if (sm4->devId != INVALID_DEVID) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+    if (sm4->devId != INVALID_DEVID)
+    #endif
+    {
         XMEMCPY(sm4->devKey, key, SM4_KEY_SIZE);
     }
 #endif

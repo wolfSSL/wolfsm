@@ -1154,6 +1154,9 @@ void wc_Sm3Free(wc_Sm3* sm3)
  * @param [in]      src  SM3 hash object to copy.
  * @param [in, out] dst  SM3 hash object to copy into.
  */
+/* Defined below; used by wc_Sm3GetHash() for a device aware copy. */
+int wc_Sm3Copy(const wc_Sm3* src, wc_Sm3* dst);
+
 static void sm3_copy(const wc_Sm3* src, wc_Sm3* dst)
 {
     XMEMCPY(dst, src, sizeof(wc_Sm3));
@@ -1197,18 +1200,21 @@ int wc_Sm3GetHash(wc_Sm3* sm3, byte* hash)
     }
     #endif
     if (ret == 0) {
-        /* Get a copy of the hash object. */
-        sm3_copy(sm3, sm3Copy);
+        ret = wc_Sm3Copy(sm3, sm3Copy);
+    }
+    if (ret == 0) {
         /* Calculate final hash value. */
         ret = wc_Sm3Final(sm3Copy, hash);
         /* Dispose of hash object. */
         wc_Sm3Free(sm3Copy);
+    }
 
-    #ifdef WOLFSSL_SMALL_STACK
+#ifdef WOLFSSL_SMALL_STACK
+    if (sm3Copy != NULL) {
         /* Free the SM3 hash object that was the copy. */
         XFREE(sm3Copy, sm3->heap, DYNAMIC_TYPE_TMP_BUFFER);
-    #endif
     }
+#endif
 
     return ret;
 }

@@ -377,7 +377,8 @@ int wc_ecc_sm2_shared_secret(ecc_key* priv, ecc_key* pub, byte* out,
     word32* outLen)
 {
 #ifdef WOLF_CRYPTO_CB
-    if (priv != NULL) {
+    /* Check for NULL pointers to mirror the software path. */
+    if ((priv != NULL) && (pub != NULL) && (out != NULL) && (outLen != NULL)) {
     #ifndef WOLF_CRYPTO_CB_FIND
         if (priv->devId != INVALID_DEVID)
     #endif
