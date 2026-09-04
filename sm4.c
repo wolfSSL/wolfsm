@@ -845,7 +845,7 @@ int wc_Sm4EcbEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz)
         ret = BAD_FUNC_ARG;
     }
 
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+#ifdef WOLF_CRYPTO_CB
     /* Offer to the device before the key check: the key may live there. */
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
@@ -901,7 +901,7 @@ int wc_Sm4EcbDecrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz)
         ret = BAD_FUNC_ARG;
     }
 
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+#ifdef WOLF_CRYPTO_CB
     /* Offer to the device before the key check: the key may live there. */
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
@@ -969,7 +969,7 @@ int wc_Sm4CbcEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz)
         ret = BAD_FUNC_ARG;
     }
 
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+#ifdef WOLF_CRYPTO_CB
     /* Offer to the device before the key check: the key may live there. */
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
@@ -1040,7 +1040,7 @@ int wc_Sm4CbcDecrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz)
         ret = BAD_FUNC_ARG;
     }
 
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+#ifdef WOLF_CRYPTO_CB
     /* Offer to the device before the key check: the key may live there. */
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
@@ -1149,7 +1149,7 @@ int wc_Sm4CtrEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz)
         ret = BAD_FUNC_ARG;
     }
 
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+#ifdef WOLF_CRYPTO_CB
     /* Offer to the device before the key check: the key may live there. */
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
@@ -1588,7 +1588,7 @@ int wc_Sm4GcmEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
         ret = BAD_FUNC_ARG;
     }
 
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+#ifdef WOLF_CRYPTO_CB
     /* Offer to the device before the key check: the key may live there. */
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
@@ -1664,7 +1664,7 @@ int wc_Sm4GcmDecrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
         ret = BAD_FUNC_ARG;
     }
 
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+#ifdef WOLF_CRYPTO_CB
     /* Offer to the device before the key check: the key may live there. */
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
@@ -2066,7 +2066,7 @@ int wc_Sm4CcmEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
         }
     }
 
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+#ifdef WOLF_CRYPTO_CB
     /* Offer to the device before the key check: the key may live there. */
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
@@ -2152,7 +2152,7 @@ int wc_Sm4CcmDecrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
         }
     }
 
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+#ifdef WOLF_CRYPTO_CB
     /* Offer to the device before the key check: the key may live there. */
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND

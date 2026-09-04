@@ -27,14 +27,6 @@
 
 #ifdef WOLFSSL_SM3
 
-/* Tell wolfSSL's crypto callback layer that SM contexts carry a devId, so it
- * compiles in the SM dispatch. Define WOLFSSL_NO_SM_CRYPTOCB to opt out, for
- * example when building against a wolfSSL that predates the SM callbacks. */
-#if defined(WOLF_CRYPTO_CB) && !defined(WOLFSSL_NO_SM_CRYPTOCB)
-    #undef  WOLFSSL_SM_CRYPTOCB
-    #define WOLFSSL_SM_CRYPTOCB
-#endif
-
 #ifdef __cplusplus
     extern "C" {
 #endif

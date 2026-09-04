@@ -943,7 +943,7 @@ int wc_Sm3Update(wc_Sm3* sm3, const byte* data, word32 len)
     }
 #endif
 
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+#ifdef WOLF_CRYPTO_CB
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
         if (sm3->devId != INVALID_DEVID)
@@ -1080,7 +1080,7 @@ int wc_Sm3Final(wc_Sm3* sm3, byte* hash)
         ret = BAD_FUNC_ARG;
     }
 
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+#ifdef WOLF_CRYPTO_CB
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
         if (sm3->devId != INVALID_DEVID)
@@ -1130,7 +1130,7 @@ int wc_Sm3Final(wc_Sm3* sm3, byte* hash)
  */
 void wc_Sm3Free(wc_Sm3* sm3)
 {
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB) && \
+#if defined(WOLF_CRYPTO_CB) && \
     defined(WOLF_CRYPTO_CB_FREE)
     /* Check we have something to work with. */
     if (sm3 != NULL) {
@@ -1229,7 +1229,7 @@ int wc_Sm3Copy(const wc_Sm3* src, wc_Sm3* dst)
         ret = BAD_FUNC_ARG;
     }
 
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB) && \
+#if defined(WOLF_CRYPTO_CB) && \
     defined(WOLF_CRYPTO_CB_COPY)
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND

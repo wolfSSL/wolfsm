@@ -296,6 +296,23 @@ int wc_ecc_sm2_create_digest(const byte *id, word16 idSz,
         err = BUFFER_E;
     }
 
+#ifdef WOLF_CRYPTO_CB
+    if (err == 0) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+        if (key->devId != INVALID_DEVID)
+    #endif
+        {
+            err = wc_CryptoCb_Sm2CreateDigest(id, idSz, msg, msgSz, hashType,
+                out, outSz, key);
+            if (err != WC_NO_ERR_TRACE(CRYPTOCB_UNAVAILABLE)) {
+                return err;
+            }
+            /* fall-through when unavailable */
+            err = 0;
+        }
+    }
+#endif
+
 #ifdef WOLFSSL_SMALL_STACK
     if (err == 0) {
         hash = (wc_HashAlg*)XMALLOC(sizeof(wc_HashAlg), key->heap,
@@ -359,7 +376,7 @@ int wc_ecc_sm2_make_key(WC_RNG* rng, ecc_key* key, int flags)
 int wc_ecc_sm2_shared_secret(ecc_key* priv, ecc_key* pub, byte* out,
     word32* outLen)
 {
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+#ifdef WOLF_CRYPTO_CB
     if (priv != NULL) {
     #ifndef WOLF_CRYPTO_CB_FIND
         if (priv->devId != INVALID_DEVID)
@@ -646,7 +663,7 @@ int wc_ecc_sm2_sign_hash(const byte* hash, word32 hashSz, byte* sig,
         err = BAD_FUNC_ARG;
     }
 
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+#ifdef WOLF_CRYPTO_CB
     if (err == MP_OKAY) {
     #ifndef WOLF_CRYPTO_CB_FIND
         if (key->devId != INVALID_DEVID)
@@ -1051,7 +1068,7 @@ int wc_ecc_sm2_verify_hash(const byte* sig, word32 sigSz, const byte* hash,
         err = BAD_FUNC_ARG;
     }
 
-#if defined(WOLF_CRYPTO_CB) && defined(WOLFSSL_SM_CRYPTOCB)
+#ifdef WOLF_CRYPTO_CB
     if (err == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
         if (key->devId != INVALID_DEVID)
