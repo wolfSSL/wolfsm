@@ -1179,7 +1179,7 @@ int wc_Sm3GetHash(wc_Sm3* sm3, byte* hash)
 {
     int ret = 0;
 #ifdef WOLFSSL_SMALL_STACK
-    wc_Sm3* sm3Copy;
+    wc_Sm3* sm3Copy = NULL;
 #else
     wc_Sm3  sm3Copy[1];
 #endif

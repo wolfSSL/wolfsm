@@ -683,6 +683,19 @@ void wc_Sm4Free(wc_Sm4* sm4)
 {
     /* Check we have something to work with. */
     if (sm4 != NULL) {
+    #if defined(WOLF_CRYPTO_CB) && \
+        defined(WOLF_CRYPTO_CB_FREE)
+        #ifndef WOLF_CRYPTO_CB_FIND
+        if (sm4->devId != INVALID_DEVID)
+        #endif
+        {
+            /* Let the device release any state it holds for this context. */
+            (void)wc_CryptoCb_Free(sm4->devId, WC_ALGO_TYPE_CIPHER,
+                WC_CIPHER_SM4, 0, sm4);
+            /* Clear the handle so a second free cannot resubmit it. */
+            sm4->devCtx = NULL;
+        }
+    #endif
         /* Must zeroize key schedule. */
         ForceZero(sm4->ks, sizeof(sm4->ks));
     #ifdef WOLF_CRYPTO_CB
