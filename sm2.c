@@ -712,19 +712,19 @@ static int ecc_sm2_mul2add(ecc_point* mG, mp_int* u1, ecc_point* mQ, mp_int* u2,
         /* mG = u1 * mG */
         err = wc_ecc_mulmod_ex(u1, mG, mG, a, modulus, 0, heap);
         if (err == MP_OKAY) {
-            /* mQ = u2 * mQ */
+            /* mR = u2 * mQ */
             err = wc_ecc_mulmod_ex(u2, mQ, mR, a, modulus, 0, heap);
         }
 
         if (err == MP_OKAY) {
-            /* mR = mQ + mG */
+            /* mR = mR + mG */
             err = ecc_projective_add_point(mR, mG, mR, a, modulus, mp);
         }
         if (err == MP_OKAY && mp_iszero(mR->z)) {
             /* When all zero then should have done a double instead. */
             if (mp_iszero(mR->x) && mp_iszero(mR->y)) {
-                /* mR = mQ * 2 (mG = mQ) */
-                err = ecc_projective_dbl_point(mQ, mR, a, modulus, mp);
+                /* mR = mG * 2 (mG holds the equal summand u1 * mG) */
+                err = ecc_projective_dbl_point(mG, mR, a, modulus, mp);
             }
             else {
                 /* When only Z zero then result is infinity. */
