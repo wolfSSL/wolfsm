@@ -29,7 +29,7 @@
 
 #include <wolfssl/wolfcrypt/sm3.h>
 #include <wolfssl/wolfcrypt/cpuid.h>
-#ifdef WOLF_CRYPTO_CB
+#ifdef WOLF_CRYPTO_CB_SM
     #include <wolfssl/wolfcrypt/cryptocb.h>
 #endif
 #include <wolfssl/wolfcrypt/hash.h>
@@ -842,7 +842,7 @@ int wc_InitSm3(wc_Sm3* sm3, void* heap, int devId)
 {
     int ret = 0;
 
-#ifndef WOLF_CRYPTO_CB
+#ifndef WOLF_CRYPTO_CB_SM
     (void)devId;
 #endif
 
@@ -856,7 +856,7 @@ int wc_InitSm3(wc_Sm3* sm3, void* heap, int devId)
         sm3_init(sm3);
 
         sm3->heap = heap;
-    #ifdef WOLF_CRYPTO_CB
+    #ifdef WOLF_CRYPTO_CB_SM
         /* Cache the device to offer hashing to. */
         sm3->devId = devId;
         sm3->devCtx = NULL;
@@ -943,7 +943,7 @@ int wc_Sm3Update(wc_Sm3* sm3, const byte* data, word32 len)
     }
 #endif
 
-#ifdef WOLF_CRYPTO_CB
+#ifdef WOLF_CRYPTO_CB_SM
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
         if (sm3->devId != INVALID_DEVID)
@@ -1080,7 +1080,7 @@ int wc_Sm3Final(wc_Sm3* sm3, byte* hash)
         ret = BAD_FUNC_ARG;
     }
 
-#ifdef WOLF_CRYPTO_CB
+#ifdef WOLF_CRYPTO_CB_SM
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
         if (sm3->devId != INVALID_DEVID)
@@ -1130,7 +1130,7 @@ int wc_Sm3Final(wc_Sm3* sm3, byte* hash)
  */
 void wc_Sm3Free(wc_Sm3* sm3)
 {
-#if defined(WOLF_CRYPTO_CB) && \
+#if defined(WOLF_CRYPTO_CB_SM) && \
     defined(WOLF_CRYPTO_CB_FREE)
     /* Check we have something to work with. */
     if (sm3 != NULL) {
@@ -1235,7 +1235,7 @@ int wc_Sm3Copy(const wc_Sm3* src, wc_Sm3* dst)
         ret = BAD_FUNC_ARG;
     }
 
-#if defined(WOLF_CRYPTO_CB) && \
+#if defined(WOLF_CRYPTO_CB_SM) && \
     defined(WOLF_CRYPTO_CB_COPY)
     if (ret == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND

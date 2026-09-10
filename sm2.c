@@ -28,7 +28,7 @@
 #if defined(WOLFSSL_SM2) && defined(HAVE_ECC)
 
 #include <wolfssl/wolfcrypt/sm2.h>
-#ifdef WOLF_CRYPTO_CB
+#ifdef WOLF_CRYPTO_CB_SM
     #include <wolfssl/wolfcrypt/cryptocb.h>
 #endif
 #include <wolfssl/wolfcrypt/sp.h>
@@ -296,7 +296,7 @@ int wc_ecc_sm2_create_digest(const byte *id, word16 idSz,
         err = BUFFER_E;
     }
 
-#ifdef WOLF_CRYPTO_CB
+#ifdef WOLF_CRYPTO_CB_SM
     if (err == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
         if (key->devId != INVALID_DEVID)
@@ -376,7 +376,7 @@ int wc_ecc_sm2_make_key(WC_RNG* rng, ecc_key* key, int flags)
 int wc_ecc_sm2_shared_secret(ecc_key* priv, ecc_key* pub, byte* out,
     word32* outLen)
 {
-#ifdef WOLF_CRYPTO_CB
+#ifdef WOLF_CRYPTO_CB_SM
     /* Check for NULL pointers to mirror the software path. */
     if ((priv != NULL) && (pub != NULL) && (out != NULL) && (outLen != NULL)) {
     #ifndef WOLF_CRYPTO_CB_FIND
@@ -664,7 +664,7 @@ int wc_ecc_sm2_sign_hash(const byte* hash, word32 hashSz, byte* sig,
         err = BAD_FUNC_ARG;
     }
 
-#ifdef WOLF_CRYPTO_CB
+#ifdef WOLF_CRYPTO_CB_SM
     if (err == MP_OKAY) {
     #ifndef WOLF_CRYPTO_CB_FIND
         if (key->devId != INVALID_DEVID)
@@ -1069,7 +1069,7 @@ int wc_ecc_sm2_verify_hash(const byte* sig, word32 sigSz, const byte* hash,
         err = BAD_FUNC_ARG;
     }
 
-#ifdef WOLF_CRYPTO_CB
+#ifdef WOLF_CRYPTO_CB_SM
     if (err == 0) {
     #ifndef WOLF_CRYPTO_CB_FIND
         if (key->devId != INVALID_DEVID)

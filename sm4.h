@@ -72,7 +72,7 @@ typedef struct wc_Sm4 {
     defined(OPENSSL_EXTRA)
     int nonceSz;
 #endif
-#ifdef WOLF_CRYPTO_CB
+#ifdef WOLF_CRYPTO_CB_SM
     int devId;
     void* devCtx;
     /* Raw key kept for crypto callback devices. The key schedule above cannot
