@@ -72,9 +72,13 @@ typedef struct wc_Sm4 {
     defined(OPENSSL_EXTRA)
     int nonceSz;
 #endif
-#ifdef WOLF_CRYPTO_CB
+#ifdef WOLF_CRYPTO_CB_SM
     int devId;
     void* devCtx;
+    /* Raw key kept for crypto callback devices. The key schedule above cannot
+     * be turned back into the key it came from, so a device that needs the key
+     * material reads it from here. */
+    byte devKey[SM4_KEY_SIZE];
 #endif
     void* heap; /* memory hint to use */
 

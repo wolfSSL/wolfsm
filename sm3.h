@@ -58,6 +58,11 @@ struct wc_Sm3 {
     word32         hiLen;
     /* Dynamic allocation hint. */
     void*          heap;
+#ifdef WOLF_CRYPTO_CB_SM
+    /* Device to offer hashing to, and its context. */
+    int            devId;
+    void*          devCtx;
+#endif
 #ifdef WOLFSSL_HASH_FLAGS
     /* Flags of hash object - see enum wc_HashFlags. */
     word32         flags;

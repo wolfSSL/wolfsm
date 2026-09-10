@@ -28,6 +28,9 @@
 #ifdef WOLFSSL_SM4
 
 #include <wolfssl/wolfcrypt/sm4.h>
+#ifdef WOLF_CRYPTO_CB_SM
+    #include <wolfssl/wolfcrypt/cryptocb.h>
+#endif
 
 #ifdef NO_INLINE
     #include <wolfssl/wolfcrypt/misc.h>
@@ -645,8 +648,9 @@ int wc_Sm4Init(wc_Sm4* sm4, void* heap, int devId)
 {
     int ret = 0;
 
-    /* No device support yet. */
+#ifndef WOLF_CRYPTO_CB_SM
     (void)devId;
+#endif
 
     /* Validate parameters. */
     if (sm4 == NULL) {
@@ -659,6 +663,11 @@ int wc_Sm4Init(wc_Sm4* sm4, void* heap, int devId)
 
         /* Cache heap hint to use with any dynamic allocations. */
         sm4->heap = heap;
+#ifdef WOLF_CRYPTO_CB_SM
+        /* Cache the device to offer operations to. */
+        sm4->devId = devId;
+        sm4->devCtx = NULL;
+#endif
     }
 
     return ret;
@@ -674,8 +683,25 @@ void wc_Sm4Free(wc_Sm4* sm4)
 {
     /* Check we have something to work with. */
     if (sm4 != NULL) {
+    #if defined(WOLF_CRYPTO_CB_SM) && \
+        defined(WOLF_CRYPTO_CB_FREE)
+        #ifndef WOLF_CRYPTO_CB_FIND
+        if (sm4->devId != INVALID_DEVID)
+        #endif
+        {
+            /* Let the device release any state it holds for this context. */
+            (void)wc_CryptoCb_Free(sm4->devId, WC_ALGO_TYPE_CIPHER,
+                WC_CIPHER_SM4, 0, sm4);
+            /* Clear the handle so a second free cannot resubmit it. */
+            sm4->devCtx = NULL;
+        }
+    #endif
         /* Must zeroize key schedule. */
         ForceZero(sm4->ks, sizeof(sm4->ks));
+    #ifdef WOLF_CRYPTO_CB_SM
+        /* The raw key kept for a device is key material too. */
+        ForceZero(sm4->devKey, sizeof(sm4->devKey));
+    #endif
     #if defined(WOLFSSL_SM4_CBC) || defined(WOLFSSL_SM4_CTR)
         /* CTR keystream and CBC decrypt plaintext both land in tmp. */
         ForceZero(sm4->tmp, sizeof(sm4->tmp));
@@ -696,6 +722,14 @@ static void sm4_set_key(wc_Sm4* sm4, const byte* key)
 {
     /* Create key schedule. */
     sm4_key_schedule(key, sm4->ks);
+#ifdef WOLF_CRYPTO_CB_SM
+    #ifndef WOLF_CRYPTO_CB_FIND
+    if (sm4->devId != INVALID_DEVID)
+    #endif
+    {
+        XMEMCPY(sm4->devKey, key, SM4_KEY_SIZE);
+    }
+#endif
     /* Mark key as having been set. */
     sm4->keySet = 1;
 }
@@ -774,6 +808,31 @@ int wc_Sm4SetIV(wc_Sm4* sm4, const byte* iv)
 
 #ifdef WOLFSSL_SM4_ECB
 
+/* Encrypt whole blocks with SM4-ECB in software.
+ *
+ * The public wc_Sm4EcbEncrypt() offers the work to a crypto callback device
+ * first. Internal callers use this worker instead, so blocks of a larger
+ * operation - the GCM counters - do not go back through the callback.
+ *
+ * @param [in]  sm4  SM4 algorithm object with a key set.
+ * @param [out] out  Byte array in which to place encrypted data.
+ * @param [in]  in   Array of bytes to encrypt.
+ * @param [in]  sz   Number of bytes to encrypt. Multiple of block size.
+ */
+static void sm4_ecb_encrypt_blocks(const wc_Sm4* sm4, byte* out,
+    const byte* in, word32 sz)
+{
+    /* Encrypt all bytes. */
+    while (sz > 0) {
+        /* Encrypt a block. */
+        sm4_encrypt(sm4->ks, in, out);
+        /* Move on to next block. */
+        in += SM4_BLOCK_SIZE;
+        out += SM4_BLOCK_SIZE;
+        sz -= SM4_BLOCK_SIZE;
+    }
+}
+
 /* Encrypt bytes using SM4-ECB.
  *
  * Length of input must be a multiple of the block size.
@@ -801,21 +860,29 @@ int wc_Sm4EcbEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz)
         ret = BAD_FUNC_ARG;
     }
 
+#ifdef WOLF_CRYPTO_CB_SM
+    /* Offer to the device before the key check: the key may live there. */
+    if (ret == 0) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+        if (sm4->devId != INVALID_DEVID)
+    #endif
+        {
+            ret = wc_CryptoCb_Sm4EcbEncrypt(sm4, out, in, sz);
+            if (ret != WC_NO_ERR_TRACE(CRYPTOCB_UNAVAILABLE)) {
+                return ret;
+            }
+            ret = 0;
+        }
+    }
+#endif
+
     /* Ensure a key has been set. */
     if ((ret == 0) && (!sm4->keySet)) {
         ret = MISSING_KEY;
     }
 
     if (ret == 0) {
-        /* Encrypt all bytes. */
-        while (sz > 0) {
-            /* Encrypt a block. */
-            sm4_encrypt(sm4->ks, in, out);
-            /* Move on to next block. */
-            in += SM4_BLOCK_SIZE;
-            out += SM4_BLOCK_SIZE;
-            sz -= SM4_BLOCK_SIZE;
-        }
+        sm4_ecb_encrypt_blocks(sm4, out, in, sz);
     }
 
     return ret;
@@ -848,6 +915,22 @@ int wc_Sm4EcbDecrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz)
     if ((ret == 0) && ((sz & (SM4_BLOCK_SIZE - 1)) != 0)) {
         ret = BAD_FUNC_ARG;
     }
+
+#ifdef WOLF_CRYPTO_CB_SM
+    /* Offer to the device before the key check: the key may live there. */
+    if (ret == 0) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+        if (sm4->devId != INVALID_DEVID)
+    #endif
+        {
+            ret = wc_CryptoCb_Sm4EcbDecrypt(sm4, out, in, sz);
+            if (ret != WC_NO_ERR_TRACE(CRYPTOCB_UNAVAILABLE)) {
+                return ret;
+            }
+            ret = 0;
+        }
+    }
+#endif
 
     /* Ensure a key has been set. */
     if ((ret == 0) && (!sm4->keySet)) {
@@ -900,6 +983,22 @@ int wc_Sm4CbcEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz)
     if ((ret == 0) && ((sz & (SM4_BLOCK_SIZE - 1)) != 0)) {
         ret = BAD_FUNC_ARG;
     }
+
+#ifdef WOLF_CRYPTO_CB_SM
+    /* Offer to the device before the key check: the key may live there. */
+    if (ret == 0) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+        if (sm4->devId != INVALID_DEVID)
+    #endif
+        {
+            ret = wc_CryptoCb_Sm4CbcEncrypt(sm4, out, in, sz);
+            if (ret != WC_NO_ERR_TRACE(CRYPTOCB_UNAVAILABLE)) {
+                return ret;
+            }
+            ret = 0;
+        }
+    }
+#endif
 
     /* Ensure a key and IV have been set. */
     if ((ret == 0) && (!sm4->keySet)) {
@@ -955,6 +1054,22 @@ int wc_Sm4CbcDecrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz)
     if ((ret == 0) && ((sz & (SM4_BLOCK_SIZE - 1)) != 0)) {
         ret = BAD_FUNC_ARG;
     }
+
+#ifdef WOLF_CRYPTO_CB_SM
+    /* Offer to the device before the key check: the key may live there. */
+    if (ret == 0) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+        if (sm4->devId != INVALID_DEVID)
+    #endif
+        {
+            ret = wc_CryptoCb_Sm4CbcDecrypt(sm4, out, in, sz);
+            if (ret != WC_NO_ERR_TRACE(CRYPTOCB_UNAVAILABLE)) {
+                return ret;
+            }
+            ret = 0;
+        }
+    }
+#endif
 
     /* Ensure a key and IV have been set. */
     if ((ret == 0) && (!sm4->keySet)) {
@@ -1048,6 +1163,22 @@ int wc_Sm4CtrEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz)
     if ((sm4 == NULL) || (in == NULL) || (out == NULL)) {
         ret = BAD_FUNC_ARG;
     }
+
+#ifdef WOLF_CRYPTO_CB_SM
+    /* Offer to the device before the key check: the key may live there. */
+    if (ret == 0) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+        if (sm4->devId != INVALID_DEVID)
+    #endif
+        {
+            ret = wc_CryptoCb_Sm4CtrEncrypt(sm4, out, in, sz);
+            if (ret != WC_NO_ERR_TRACE(CRYPTOCB_UNAVAILABLE)) {
+                return ret;
+            }
+            ret = 0;
+        }
+    }
+#endif
 
     /* Ensure a key and IV have been set. */
     if ((ret == 0) && (!sm4->keySet)) {
@@ -1216,7 +1347,7 @@ static void sm4_gcm_encrypt_c(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
         /* Reset number of blocks. */
         blocks = sz / SM4_BLOCK_SIZE;
         /* Encrypt the counters. */
-        wc_Sm4EcbEncrypt(sm4, out, out, SM4_BLOCK_SIZE * blocks);
+        sm4_ecb_encrypt_blocks(sm4, out, out, SM4_BLOCK_SIZE * blocks);
         /* XOR in the plaintext to create cipher text. */
         xorbuf(out, in, SM4_BLOCK_SIZE * blocks);
         /* Step over handled plaintext */
@@ -1348,7 +1479,7 @@ static int sm4_gcm_decrypt_c(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
             /* Reset number of blocks. */
             blocks = sz / SM4_BLOCK_SIZE;
             /* Encrypt the counters. */
-            wc_Sm4EcbEncrypt(sm4, out, out, SM4_BLOCK_SIZE * blocks);
+            sm4_ecb_encrypt_blocks(sm4, out, out, SM4_BLOCK_SIZE * blocks);
             /* XOR in the plaintext to create cipher text. */
             xorbuf(out, in, SM4_BLOCK_SIZE * blocks);
             /* Step over handled plaintext */
@@ -1472,6 +1603,23 @@ int wc_Sm4GcmEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
         ret = BAD_FUNC_ARG;
     }
 
+#ifdef WOLF_CRYPTO_CB_SM
+    /* Offer to the device before the key check: the key may live there. */
+    if (ret == 0) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+        if (sm4->devId != INVALID_DEVID)
+    #endif
+        {
+            ret = wc_CryptoCb_Sm4GcmEncrypt(sm4, out, in, sz, nonce,
+                nonceSz, tag, tagSz, aad, aadSz);
+            if (ret != WC_NO_ERR_TRACE(CRYPTOCB_UNAVAILABLE)) {
+                return ret;
+            }
+            ret = 0;
+        }
+    }
+#endif
+
     /* Ensure a key has been set. */
     if ((ret == 0) && (!sm4->keySet)) {
         ret = MISSING_KEY;
@@ -1530,6 +1678,23 @@ int wc_Sm4GcmDecrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
     if (nonceSz == 0) {
         ret = BAD_FUNC_ARG;
     }
+
+#ifdef WOLF_CRYPTO_CB_SM
+    /* Offer to the device before the key check: the key may live there. */
+    if (ret == 0) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+        if (sm4->devId != INVALID_DEVID)
+    #endif
+        {
+            ret = wc_CryptoCb_Sm4GcmDecrypt(sm4, out, in, sz, nonce,
+                nonceSz, tag, tagSz, aad, aadSz);
+            if (ret != WC_NO_ERR_TRACE(CRYPTOCB_UNAVAILABLE)) {
+                return ret;
+            }
+            ret = 0;
+        }
+    }
+#endif
 
     /* Ensure a key has been set. */
     if ((ret == 0) && (!sm4->keySet)) {
@@ -1916,6 +2081,23 @@ int wc_Sm4CcmEncrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
         }
     }
 
+#ifdef WOLF_CRYPTO_CB_SM
+    /* Offer to the device before the key check: the key may live there. */
+    if (ret == 0) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+        if (sm4->devId != INVALID_DEVID)
+    #endif
+        {
+            ret = wc_CryptoCb_Sm4CcmEncrypt(sm4, out, in, sz, nonce,
+                nonceSz, tag, tagSz, aad, aadSz);
+            if (ret != WC_NO_ERR_TRACE(CRYPTOCB_UNAVAILABLE)) {
+                return ret;
+            }
+            ret = 0;
+        }
+    }
+#endif
+
     /* Ensure a key has been set. */
     if ((ret == 0) && (!sm4->keySet)) {
         ret = MISSING_KEY;
@@ -1984,6 +2166,23 @@ int wc_Sm4CcmDecrypt(wc_Sm4* sm4, byte* out, const byte* in, word32 sz,
             ret = BAD_FUNC_ARG;
         }
     }
+
+#ifdef WOLF_CRYPTO_CB_SM
+    /* Offer to the device before the key check: the key may live there. */
+    if (ret == 0) {
+    #ifndef WOLF_CRYPTO_CB_FIND
+        if (sm4->devId != INVALID_DEVID)
+    #endif
+        {
+            ret = wc_CryptoCb_Sm4CcmDecrypt(sm4, out, in, sz, nonce,
+                nonceSz, tag, tagSz, aad, aadSz);
+            if (ret != WC_NO_ERR_TRACE(CRYPTOCB_UNAVAILABLE)) {
+                return ret;
+            }
+            ret = 0;
+        }
+    }
+#endif
 
     /* Ensure a key has been set. */
     if ((ret == 0) && (!sm4->keySet)) {
