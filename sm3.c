@@ -1154,9 +1154,6 @@ void wc_Sm3Free(wc_Sm3* sm3)
  * @param [in]      src  SM3 hash object to copy.
  * @param [in, out] dst  SM3 hash object to copy into.
  */
-/* Defined below; used by wc_Sm3GetHash() for a device aware copy. */
-int wc_Sm3Copy(const wc_Sm3* src, wc_Sm3* dst);
-
 static void sm3_copy(const wc_Sm3* src, wc_Sm3* dst)
 {
     XMEMCPY(dst, src, sizeof(wc_Sm3));
