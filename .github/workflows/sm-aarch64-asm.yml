@@ -1,0 +1,88 @@
+name: SM AArch64 Assembly Test
+
+# The ShangMi code has target specific paths that none of the other workflows
+# reach: they all run on x86_64 and none enables WOLFSSL_ARMASM. SM4-GCM in
+# particular borrows wolfSSL's GHASH from aes.c, whose ARM build keeps the hash
+# subkey in a different representation and reflects it inside the bulk assembly
+# rather than in the caller. This job builds for aarch64 and runs the SM
+# self-tests there, so that the GHASH subkey handling and the non-12-byte nonce
+# path - where the initial counter is itself a GHASH - stay covered.
+#
+# Built with the aarch64 cross toolchain and run under qemu-user, which is how
+# wolfSSL's own multi-arch workflow covers this architecture. A native
+# ubuntu-*-arm runner would also work and is faster, at the cost of being a
+# different runner pool from every other job here.
+
+on:
+  push:
+    branches: [ '**' ]
+  pull_request:
+    branches: [ 'main', 'master', 'release/**' ]
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    uses: ./.github/workflows/_resolve-wolfssl.yml
+
+  build:
+    name: aarch64 ${{ matrix.config.name }} (wolfSSL ${{ matrix.wolfssl-ref }})
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        wolfssl-ref: ${{ fromJson(needs.resolve.outputs.refs) }}
+        config:
+          # The assembly build is the point of this workflow.
+          - name: armasm
+            flags: '--enable-armasm'
+          - name: armasm-sp-asm
+            flags: '--enable-armasm --enable-sp --enable-sp-asm'
+          # Same vectors, same architecture, C code only: tells an assembly
+          # fault apart from something that is wrong on aarch64 generally.
+          - name: c-only
+            flags: ''
+    env:
+      SM_FLAGS: >-
+        --enable-sm3 --enable-sm4-ecb --enable-sm4-cbc --enable-sm4-ctr
+        --enable-sm4-gcm --enable-sm4-ccm --enable-sm2
+      QEMU_LD_PREFIX: /usr/aarch64-linux-gnu
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool \
+              crossbuild-essential-arm64 qemu-user qemu-user-binfmt
+
+      - name: Checkout wolfsm
+        uses: actions/checkout@v4
+
+      - name: Build wolfSSL with wolfsm for aarch64
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch ${{ matrix.wolfssl-ref }} \
+              https://github.com/wolfSSL/wolfssl.git ../wolfssl
+          ./install.sh ../wolfssl
+          cd ../wolfssl
+          ./autogen.sh
+          ./configure --host=aarch64-linux-gnu CC=aarch64-linux-gnu-gcc \
+              $SM_FLAGS ${{ matrix.config.flags }}
+          make -j"$(nproc)"
+
+      - name: wolfCrypt test (SM2/SM3/SM4 algorithm self-tests)
+        working-directory: ../wolfssl
+        run: ./wolfcrypt/test/testwolfcrypt
+
+      - name: SM benchmark
+        working-directory: ../wolfssl
+        run: ./wolfcrypt/benchmark/benchmark -sm2 -sm3 -sm4-cbc -sm4-gcm -sm4-ccm
